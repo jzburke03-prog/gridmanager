@@ -3,11 +3,28 @@ import math
 import pygame
 
 from game_state import SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD, MAX_FILL_PCT
+from ui import portraits
+from ui.gradient_border import AMBER, RED, GradientBorder
 
 TEXT = (225, 230, 240)
 DIM = (150, 158, 176)
 SUPPLY_COLOR = (110, 220, 160)
 DEMAND_COLOR = (255, 170, 90)
+
+# The time-of-day sky now runs genuinely bright at midday (see ui/time_of_day),
+# and this readout is drawn straight onto it with no panel behind it. A scrim
+# under the top HUD band keeps the light text legible against a noon sky without
+# tinting any actual UI panel.
+SCRIM_COLOR = (10, 13, 21)
+SCRIM_PEAK_ALPHA = 165
+
+# Concise, honest cause-of-death text for each failure the sim can actually
+# produce, keyed by GameState.game_over_reason.
+FAILURE_EXPLANATIONS = {
+    "TOTAL BLACKOUT": "Supply fell under 40% of demand. The city went dark.",
+    "GRID MELTDOWN": "You ran supply to double demand. The grid cooked itself.",
+    "NUCLEAR MELTDOWN": "The reactor was cut below its minimum stable output.",
+}
 
 
 def _balance_color(ratio: float):
@@ -55,10 +72,29 @@ class HUD:
         self._t = 0.0
         self._prev_fill = None
         self._ratio_display = 1.0
+        self._border = GradientBorder()
+        self._scrim = None
+        self._scrim_key = None
 
-    def draw(self, surface, state, rim_color, fill_label):
+    def _top_scrim(self, width, band_h):
+        """Cached legibility gradient behind the top HUD band. Built one pixel
+        wide and stretched, so a resize costs one scale blit and a normal frame
+        costs nothing."""
+        key = (width, band_h)
+        if key != self._scrim_key:
+            column = pygame.Surface((1, band_h), pygame.SRCALPHA)
+            for y in range(band_h):
+                alpha = int(SCRIM_PEAK_ALPHA * (1.0 - y / band_h) ** 1.5)
+                column.set_at((0, y), (*SCRIM_COLOR, alpha))
+            self._scrim = pygame.transform.scale(column, (width, band_h))
+            self._scrim_key = key
+        return self._scrim
+
+    def draw(self, surface, state, rim_color, fill_label, hud_band_height=220):
         self._t += 1 / 60.0
         w, h = surface.get_size()
+
+        surface.blit(self._top_scrim(w, hud_band_height), (0, 0))
 
         clock_txt = self.font_big.render(state.clock_string(), True, TEXT)
         surface.blit(clock_txt, (24, 20))
@@ -191,18 +227,40 @@ class HUD:
         fill_pct = state.fill_pct_display
         if fill_pct < SEVERE_LOW_THRESHOLD:
             severity = (SEVERE_LOW_THRESHOLD - max(0.0, fill_pct)) / SEVERE_LOW_THRESHOLD
-            self._draw_vignette(surface, (200, 20, 20), severity)
+            self._draw_vignette(surface, RED, severity)
             label = "☠ CATASTROPHIC BLACKOUT" if severity > 0.7 else "⚠ BLACKOUT RISK"
             self._draw_warning(surface, label, (255, 120, 120), y, severity)
         elif fill_pct > SEVERE_HIGH_THRESHOLD:
             span = MAX_FILL_PCT - SEVERE_HIGH_THRESHOLD
             severity = min(1.0, (fill_pct - SEVERE_HIGH_THRESHOLD) / max(0.01, span))
-            self._draw_vignette(surface, (255, 140, 20), severity)
+            self._draw_vignette(surface, AMBER, severity)
             label = "☠ GRID MELTDOWN IMMINENT" if severity > 0.6 else "⚠ CRITICAL OVERLOAD"
             self._draw_warning(surface, label, (255, 190, 110), y, severity)
         elif state.blackout:
-            self._draw_vignette(surface, (200, 20, 20), 0.3)
+            self._draw_vignette(surface, RED, 0.3)
             self._draw_warning(surface, "⚠ BLACKOUT RISK", (255, 120, 120), y, 0.3)
+
+        if state.celebrate_high_score > 0:
+            self._draw_success_toast(surface)
+
+    def _draw_success_toast(self, surface):
+        """Thumbs-up beside the game's existing new-personal-best event. The
+        numeric BEST readout above is untouched; this only adds a reaction."""
+        _, h = surface.get_size()
+        portrait = portraits.scaled_to_height(portraits.HAPPY, 150)
+        p_rect = portrait.get_rect()
+        p_rect.left = 24
+        p_rect.bottom = h - 210
+        surface.blit(portrait, p_rect.topleft)
+
+        txt = self.font.render("NEW PERSONAL BEST", True, (255, 236, 170))
+        plate = pygame.Rect(0, 0, txt.get_width() + 20, txt.get_height() + 12)
+        plate.midleft = (p_rect.right + 4, p_rect.centery)
+        plate_surf = pygame.Surface(plate.size, pygame.SRCALPHA)
+        pygame.draw.rect(plate_surf, (34, 30, 12, 220), plate_surf.get_rect(), border_radius=6)
+        pygame.draw.rect(plate_surf, (255, 215, 90, 220), plate_surf.get_rect(), width=1, border_radius=6)
+        plate_surf.blit(txt, (10, 6))
+        surface.blit(plate_surf, plate.topleft)
 
     def _draw_warning(self, surface, text, color, y, severity):
         # Slow, smooth brightness breathing — no positional jitter, and
@@ -227,11 +285,20 @@ class HUD:
             "GRID MELTDOWN": "☠ GRID MELTDOWN",
             "NUCLEAR MELTDOWN": "☢ NUCLEAR MELTDOWN",
         }
+        # Gattie reacts to the failure. Bottom-anchored to the left of the
+        # centered text block, clamped so a narrow window can't push him off.
+        portrait = portraits.scaled_to_height(portraits.ANGRY, min(300, max(150, h // 3)))
+        p_rect = portrait.get_rect()
+        p_rect.right = max(portrait.get_width() + 12, w // 2 - 250)
+        p_rect.centery = h // 2 - 10
+        surface.blit(portrait, p_rect.topleft)
+
         title = reason_labels.get(state.game_over_reason, "☠ GRID FAILURE")
         title_txt = self.font_mono_big.render(title, True, (255, 110, 100))
         surface.blit(title_txt, (w // 2 - title_txt.get_width() // 2, h // 2 - 110))
 
-        sub = self.font.render("The grid did not survive.", True, DIM)
+        explanation = FAILURE_EXPLANATIONS.get(state.game_over_reason, "The grid did not survive.")
+        sub = self.font.render(explanation, True, DIM)
         surface.blit(sub, (w // 2 - sub.get_width() // 2, h // 2 - 110 + title_txt.get_height() + 6))
 
         score_txt = self.font_big.render(f"FINAL SCORE  {int(state.score):,}", True, TEXT)
@@ -244,16 +311,14 @@ class HUD:
         hint = self.font.render("Press R to restart  ·  ESC to quit", True, DIM)
         surface.blit(hint, (w // 2 - hint.get_width() // 2, h // 2 + 70 + score_txt.get_height()))
 
-    def _draw_vignette(self, surface, color, severity=0.3):
-        w, h = surface.get_size()
-        vign = pygame.Surface((w, h), pygame.SRCALPHA)
+    def _draw_vignette(self, surface, palette, severity=0.3):
+        """Warning band around the play area. Previously four flat solid-color
+        rects rebuilt every frame; now a pre-rendered gradient (dark exterior ->
+        brighter interior) that only re-renders when the window size or the
+        quantized thickness changes. Position, thickness and pulse timing are
+        unchanged."""
         thickness = int(70 + 90 * severity)
         pulse_speed = 1.0 + 1.0 * severity  # capped well under 1 Hz
         pulse = int((30 + 60 * severity) * abs(math.sin(self._t * pulse_speed)))
         base_alpha = int(50 + 130 * severity)
-        c = (*color, min(255, base_alpha + pulse))
-        pygame.draw.rect(vign, c, (0, 0, w, thickness))
-        pygame.draw.rect(vign, c, (0, h - thickness, w, thickness))
-        pygame.draw.rect(vign, c, (0, 0, thickness, h))
-        pygame.draw.rect(vign, c, (w - thickness, 0, thickness, h))
-        surface.blit(vign, (0, 0))
+        self._border.draw(surface, thickness, min(255, base_alpha + pulse), palette)

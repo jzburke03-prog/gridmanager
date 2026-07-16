@@ -147,6 +147,7 @@ class GameState:
         self.score_delta_per_sec = 0.0
         self.high_score = load_high_score()
         self.new_high_score = False
+        self.celebrate_high_score = 0.0   # seconds left on the personal-best reaction
 
         self.blackout = False
         self.overflow = False
@@ -280,9 +281,11 @@ class GameState:
         if self.score > self.high_score:
             if not self.new_high_score and self.high_score > 0:
                 self.flash_messages.append(["★ NEW HIGH SCORE", 3.0])
+                self.celebrate_high_score = 3.0
             self.high_score = self.score
             self.new_high_score = True
 
+        self.celebrate_high_score = max(0.0, self.celebrate_high_score - dt)
         self.flash_messages = [[t, ttl - dt] for t, ttl in self.flash_messages if ttl - dt > 0]
 
         self._record_history()

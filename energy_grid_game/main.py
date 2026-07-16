@@ -16,6 +16,7 @@ from ui.city_grid import CityGrid
 from ui.speed_control import SpeedControl
 from ui.hud import HUD
 from ui.sky import SkyLayer
+from ui.tutorial import TutorialManager
 
 BG_COLOR = (13, 17, 23)
 PANEL_COLOR = (28, 35, 51)
@@ -103,6 +104,7 @@ def main():
     pipes = PipeSystem()
     hud = HUD(font, font_small, font_big, font_mono_big)
     sky = SkyLayer()
+    tutorial = TutorialManager(font, font_small, font_big)
 
     # depth=24 forces NO alpha byte. pygame.Surface() defaults to 32-bit with
     # an alpha channel on this platform (even without SRCALPHA), and blitting
@@ -122,7 +124,13 @@ def main():
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN:
+                continue
+            # The tutorial gets first refusal on input: it swallows its own
+            # advance/skip clicks so they can't reach the grid underneath, and
+            # passes through anything it doesn't own.
+            if tutorial.handle_event(event):
+                continue
+            if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
                 elif event.key == pygame.K_SPACE:
@@ -132,7 +140,9 @@ def main():
                 elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                     state.speed_down()
                 elif event.key == pygame.K_r:
+                    # R starts a new game, and a new game starts with the tutorial
                     state = GameState()
+                    tutorial = TutorialManager(font, font_small, font_big)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if not speed_control.handle_mouse_down(event.pos, state):
                     spigot_panel.handle_mouse_down(event.pos, state.sources)
@@ -141,7 +151,10 @@ def main():
             elif event.type == pygame.MOUSEMOTION:
                 spigot_panel.handle_mouse_motion(event.pos, state.sources)
 
-        state.update(dt)
+        # The tutorial freezes the sim while it's talking, and releases it for
+        # steps that ask the player to actually do something.
+        if not tutorial.blocks_gameplay():
+            state.update(dt)
 
         # Recompute layout every frame from the actual surface size so resizing
         # or maximizing the window never leaves stale/mismatched panel rects.
@@ -174,6 +187,22 @@ def main():
         demand_box.center = (screen_w // 2, floor_y - box_footprint_px / 2)
         box_top_point = (demand_box.center[0], demand_box.center[1] - box_height_px)
 
+        # Highlight targets handed to the tutorial, taken from the real layout
+        # rects so they stay correct through a resize instead of being guessed.
+        tank_half_w = box_footprint_px * ISO_HALF_WIDTH_RATIO
+        tutorial.update(dt, state, {
+            "supply_demand": pygame.Rect(screen_w // 2 - 190, 14, 380, 150),
+            "spigot_panel": spigot_rect,
+            "gas_card": spigot_panel.card_rects(state.sources).get("gas"),
+            "tank": pygame.Rect(
+                demand_box.center[0] - tank_half_w,
+                demand_box.center[1] - box_height_px - box_footprint_px / 2,
+                tank_half_w * 2,
+                box_height_px + box_footprint_px,
+            ),
+            "speed_control": speed_control.bounds(),
+        })
+
         sky.draw(frame, frame.get_rect(), state.sim_hour, state.active_event)
 
         pygame.draw.rect(frame, PANEL_COLOR, spigot_rect)
@@ -200,8 +229,9 @@ def main():
                           state.demand_mw, DEMAND_MIN_MW, DEMAND_PEAK_MW)
         city_grid.draw(frame, state.fill_pct_display)
 
-        hud.draw(frame, state, rim_color, fill_lbl)
+        hud.draw(frame, state, rim_color, fill_lbl, TOP_HUD_HEIGHT)
         speed_control.draw(frame, state)
+        tutorial.draw(frame)
 
         if state.game_over:
             hud.draw_game_over(frame, state)

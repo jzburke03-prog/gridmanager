@@ -1,13 +1,16 @@
-"""Full-frame background: a day/night sky whose brightness, sun and moon
-position track sim_hour, plus animated weather overlays (rain, cloud cover,
-heat-wave sun pulses, wind gust streaks) synced to the active grid event.
+"""Full-frame background: a day/night sky whose color, sun and moon position
+track sim_hour, plus animated weather overlays (rain, cloud cover, heat-wave sun
+pulses, wind gust streaks) synced to the active grid event.
+
+The flat two-color day/night lerp this used to fill with has been replaced by a
+vertical gradient interpolated between time-of-day keyframes (see ui/time_of_day),
+driven by the simulation clock rather than the real-world one.
 """
 import math
 import random
 import pygame
 
-NIGHT_COLOR = (10, 13, 21)
-DAY_COLOR = (45, 58, 88)
+from ui.time_of_day import SkyGradient
 
 SUN_COLOR = (255, 209, 102)     # matches SolarSource.color
 MOON_COLOR = (200, 210, 225)
@@ -19,11 +22,6 @@ HEAT_RING_COLOR = (255, 140, 90)
 
 DAY_START, DAY_END = 5.0, 20.0     # sunrise / sunset, mirrors solar_availability
 NIGHT_SPAN = 24.0 - (DAY_END - DAY_START)  # 9 hours
-
-
-def _lerp_color(a, b, t):
-    t = max(0.0, min(1.0, t))
-    return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
 
 
 def _arc_pos(progress, rect):
@@ -99,18 +97,11 @@ class SkyLayer:
         self._clouds = None
         self._raindrops = None
         self._streaks = None
-
-    def _daylight(self, t):
-        if t < DAY_START or t >= DAY_END:
-            return 0.0
-        progress = (t - DAY_START) / (DAY_END - DAY_START)
-        return math.sin(math.pi * progress)
+        self._gradient = SkyGradient()
 
     def draw(self, surface, rect, sim_hour, active_event):
         self._t += 1 / 60.0
-        daylight = self._daylight(sim_hour)
-        bg = _lerp_color(NIGHT_COLOR, DAY_COLOR, daylight)
-        surface.fill(tuple(int(c) for c in bg), rect)
+        self._gradient.draw(surface, rect, sim_hour)
 
         sun_pt = moon_pt = None
         if DAY_START <= sim_hour < DAY_END:

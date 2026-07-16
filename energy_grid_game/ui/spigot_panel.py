@@ -52,6 +52,12 @@ class SpigotPanel:
         boxes = self._layout(len(sources))
         return {src.key: box.centerx for src, box in zip(sources, boxes)}
 
+    def card_rects(self, sources) -> dict:
+        """Card rect per source key, so callers (e.g. the tutorial) can point at
+        a specific plant without duplicating the layout math."""
+        boxes = self._layout(len(sources))
+        return {src.key: box.inflate(-10, -10) for src, box in zip(sources, boxes)}
+
     def handle_mouse_down(self, pos, sources):
         boxes = self._layout(len(sources))
         for src, box in zip(sources, boxes):

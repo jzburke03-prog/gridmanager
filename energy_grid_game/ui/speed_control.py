@@ -29,6 +29,12 @@ class SpeedControl:
         self._label_rect = pygame.Rect(x + BTN_W + GAP, y, label_w, BTN_H)
         self._plus_rect.topleft = (x + BTN_W + GAP + label_w + GAP, y)
 
+    def bounds(self) -> pygame.Rect:
+        """Bounding rect of the whole widget, including the SPEED caption."""
+        self._layout()
+        rect = self._minus_rect.union(self._label_rect).union(self._plus_rect)
+        return rect.inflate(0, 22).move(0, 11)  # room for the caption underneath
+
     def handle_mouse_down(self, pos, state):
         self._layout()
         if self._minus_rect.collidepoint(pos):
