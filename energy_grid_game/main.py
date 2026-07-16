@@ -7,7 +7,7 @@ import pygame
 from game_state import (GameState, WINDOW_WIDTH, WINDOW_HEIGHT, FPS,
                          MAX_BOX_HEIGHT_PX, MAX_BOX_FOOTPRINT_PX,
                          DEMAND_MIN_MW, DEMAND_PEAK_MW,
-                         SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD)
+                         SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD, MAX_FILL_PCT)
 from ui.demand_box import DemandBox
 from ui.demand_chart import DemandChart
 from ui.spigot_panel import SpigotPanel
@@ -15,6 +15,7 @@ from ui.pipes import PipeSystem
 from ui.city_grid import CityGrid
 from ui.speed_control import SpeedControl
 from ui.hud import HUD
+from ui.sky import SkyLayer
 
 BG_COLOR = (13, 17, 23)
 PANEL_COLOR = (28, 35, 51)
@@ -71,7 +72,7 @@ def _severity(fill_pct):
     if fill_pct < SEVERE_LOW_THRESHOLD:
         return (SEVERE_LOW_THRESHOLD - max(0.0, fill_pct)) / SEVERE_LOW_THRESHOLD
     if fill_pct > SEVERE_HIGH_THRESHOLD:
-        return min(1.0, (fill_pct - SEVERE_HIGH_THRESHOLD) / max(0.01, 3.0 - SEVERE_HIGH_THRESHOLD))
+        return min(1.0, (fill_pct - SEVERE_HIGH_THRESHOLD) / max(0.01, MAX_FILL_PCT - SEVERE_HIGH_THRESHOLD))
     return 0.0
 
 
@@ -101,6 +102,7 @@ def main():
     speed_control = SpeedControl((24, 96), font_small, font)
     pipes = PipeSystem()
     hud = HUD(font, font_small, font_big, font_mono_big)
+    sky = SkyLayer()
 
     # depth=24 forces NO alpha byte. pygame.Surface() defaults to 32-bit with
     # an alpha channel on this platform (even without SRCALPHA), and blitting
@@ -129,7 +131,7 @@ def main():
                     state.speed_up()
                 elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                     state.speed_down()
-                elif event.key == pygame.K_r and state.game_over:
+                elif event.key == pygame.K_r:
                     state = GameState()
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if not speed_control.handle_mouse_down(event.pos, state):
@@ -172,13 +174,11 @@ def main():
         demand_box.center = (screen_w // 2, floor_y - box_footprint_px / 2)
         box_top_point = (demand_box.center[0], demand_box.center[1] - box_height_px)
 
-        frame.fill(BG_COLOR)
+        sky.draw(frame, frame.get_rect(), state.sim_hour, state.active_event)
 
         pygame.draw.rect(frame, PANEL_COLOR, spigot_rect)
         pygame.draw.line(frame, (10, 13, 20), (0, spigot_rect.bottom), (screen_w, spigot_rect.bottom), 2)
-        spigot_panel.draw(frame, state.sources, state.sim_hour, state.demand_level)
-
-        pygame.draw.rect(frame, BG_COLOR, box_rect)
+        spigot_panel.draw(frame, state.sources, state.demand_level)
 
         # feeder pipes: drawn before the box so their ends tuck behind the rim.
         # Droplets keep falling past the rim down to the CURRENT water surface
@@ -191,7 +191,7 @@ def main():
                   water_drop_px)
 
         # net grid imbalance drives how agitated the water surface is
-        agitation = max(-1.5, min(1.5, (state.total_actual_mw - state.demand_mw) / 1500.0))
+        agitation = max(-1.5, min(1.5, (state.total_actual_mw - state.demand_mw) / 620.0))
         tint_rgb = _supply_mix_tint(state.sources)
         rim_color, fill_lbl = demand_box.draw(frame, box_height_px, box_footprint_px,
                                               state.fill_pct_display, agitation, tint_rgb)

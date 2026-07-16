@@ -18,23 +18,24 @@ WINDOW_WIDTH = 1400
 WINDOW_HEIGHT = 900
 FPS = 60
 GAME_DAY_REAL_SECONDS = 120       # How long 1 in-game day lasts
-IDEAL_FILL_MIN = 0.50
-IDEAL_FILL_MAX = 0.85
 MAX_BOX_HEIGHT_PX = 300
 MIN_BOX_HEIGHT_PX = 100
 MAX_BOX_FOOTPRINT_PX = 300
 MIN_BOX_FOOTPRINT_PX = 130
 BOX_LERP_SPEED = 0.06             # per-second smoothing factor
 WATER_LERP_SPEED = 1.2            # per-second smoothing factor
-TOTAL_GRID_CAPACITY_MW = 4200      # sum of all max source outputs
+TOTAL_GRID_CAPACITY_MW = 1725      # sum of all max source outputs
 
-DEMAND_MIN_MW = 900.0
-DEMAND_PEAK_MW = 3400.0
+DEMAND_MIN_MW = 370.0
+DEMAND_PEAK_MW = 1400.0
 FILL_TRACK_SPEED = 2.0              # per-second smoothing toward the LIVE supply/demand ratio
-MAX_FILL_PCT = 3.0                  # headroom above 100% so overflow can keep visibly escalating
-BLACKOUT_THRESHOLD = 0.15
-SEVERE_LOW_THRESHOLD = 0.35         # below this: dramatic "the city is dying" escalation
-SEVERE_HIGH_THRESHOLD = 1.8         # above this: dramatic "grid is melting down" escalation
+MAX_FILL_PCT = 2.0                  # headroom above 100% so overflow can keep visibly escalating
+BLACKOUT_THRESHOLD = 0.40
+STARTUP_GRACE = 3.0                 # seconds before a fresh game can blackout/meltdown —
+                                     # fill_pct starts below BLACKOUT_THRESHOLD and needs
+                                     # time to track toward the real supply/demand ratio
+SEVERE_LOW_THRESHOLD = 0.75         # below this (-25% of demand): dramatic "the city is dying" escalation
+SEVERE_HIGH_THRESHOLD = 1.25        # above this (+25% of demand): dramatic "grid is melting down" escalation
 
 HOUSEHOLDS_PER_MW = 1000            # 1000 MW ~ 1,000,000 households
 
@@ -52,32 +53,38 @@ GRACE_PERIOD = 30.0                # no events during the opening moments of a s
 class GridEvent:
     """An active disturbance: applies its effect while remaining > 0, then reverts."""
 
-    def __init__(self, name, duration, demand_multiplier=1.0,
-                 solar_override=None, wind_override=None, maintenance_target=None):
+    def __init__(self, name, kind, duration, demand_multiplier=1.0,
+                 solar_override=None, wind_override=None, hydro_boost=1.0,
+                 maintenance_target=None):
         self.name = name
+        self.kind = kind  # stable tag for UI/pricing dispatch: HEAT_WAVE, CLOUD_COVER, WIND_GUST, RAIN, MAINTENANCE
         self.duration = duration
         self.remaining = duration
         self.demand_multiplier = demand_multiplier
         self.solar_override = solar_override
         self.wind_override = wind_override
+        self.hydro_boost = hydro_boost
         self.maintenance_target = maintenance_target  # source forced offline, if any
 
 
 def _roll_event(sources):
     """Pick a random event definition; maintenance targets a random running source."""
-    kind = random.choice(["HEAT WAVE", "CLOUD COVER", "WIND GUST", "GRID MAINTENANCE"])
+    kind = random.choice(["HEAT WAVE", "CLOUD COVER", "WIND GUST", "RAIN", "GRID MAINTENANCE"])
     if kind == "HEAT WAVE":
-        return GridEvent("⚠ HEAT WAVE — demand surging", 30.0, demand_multiplier=1.3)
+        return GridEvent("⚠ HEAT WAVE — demand surging", "HEAT_WAVE", 30.0, demand_multiplier=1.3)
     if kind == "CLOUD COVER":
-        return GridEvent("☁ CLOUD COVER — solar offline", 20.0, solar_override=0.0)
+        return GridEvent("☁ CLOUD COVER — solar offline", "CLOUD_COVER", 20.0, solar_override=0.0)
     if kind == "WIND GUST":
-        return GridEvent("💨 WIND GUST — wind at maximum", 10.0, wind_override=1.0)
+        return GridEvent("💨 WIND GUST — wind at maximum", "WIND_GUST", 10.0, wind_override=1.0)
+    if kind == "RAIN":
+        return GridEvent("🌧 RAIN — solar dimmed, hydro boosted", "RAIN", 25.0,
+                         solar_override=0.15, hydro_boost=1.15)
     # grid maintenance: only sources actually producing are interesting targets
     candidates = [s for s in sources if s.actual_pct > 0.05 and s.forced_offline_timer <= 0]
     if not candidates:
         return None
     target = random.choice(candidates)
-    return GridEvent(f"🔧 GRID MAINTENANCE — {target.name} offline", 45.0,
+    return GridEvent(f"🔧 GRID MAINTENANCE — {target.name} offline", "MAINTENANCE", 45.0,
                      maintenance_target=target)
 
 
@@ -99,19 +106,24 @@ def save_high_score(score: float):
 
 def score_delta(fill_pct: float) -> float:
     """fill_pct is the live supply/demand ratio (1.0 == exactly meeting demand),
-    so the ideal band is centered on 1.0, not on some mid-range buffer level."""
-    if fill_pct < 0.15:
+    so the ideal band is centered on 1.0, not on some mid-range buffer level.
+    Tuned so +/-25% of demand is the hard line between "recoverable miss" and
+    "actively bleeding score" — tight enough that drifting off target actually
+    hurts, without the buffer band being so thin it's not fun."""
+    if fill_pct < BLACKOUT_THRESHOLD:
         return -50   # blackout: barely any demand being met
-    elif fill_pct < 0.55:
-        return -10   # severe shortfall
-    elif fill_pct < 0.85:
-        return 0      # underpowered, neutral
-    elif fill_pct <= 1.15:
-        return +10   # balanced: meeting demand within a reasonable margin
-    elif fill_pct < 1.5:
-        return +2    # oversupplied but not yet dangerous
+    elif fill_pct < 0.75:
+        return -20   # danger zone: more than 25% short of demand
+    elif fill_pct < 0.90:
+        return -3    # underpowered, mildly costly
+    elif fill_pct <= 1.10:
+        return +10   # ideal: within 10% of demand
+    elif fill_pct <= 1.25:
+        return -3    # oversupplied, mildly wasteful
+    elif fill_pct < MAX_FILL_PCT:
+        return -20   # danger zone: more than 25% over demand
     else:
-        return -30   # overflow: wasteful and destabilizing
+        return -50   # meltdown: wildly overproducing
 
 
 class GameState:
@@ -128,6 +140,8 @@ class GameState:
         self.fill_pct = 0.30
         self.fill_pct_display = 0.30
         self.fill_pct_prev = 0.30
+        self.session_elapsed = 0.0   # blocks blackout/meltdown checks until
+                                      # fill_pct has had time to track reality
 
         self.score = 0.0
         self.score_delta_per_sec = 0.0
@@ -211,6 +225,7 @@ class GameState:
         if self.paused or self.game_over:
             return
         dt *= self.game_speed
+        self.session_elapsed += dt
 
         self.sim_hour = (self.sim_hour + dt / self.seconds_per_sim_hour()) % 24.0
         self.demand_level = demand_at_hour(self.sim_hour)
@@ -250,10 +265,11 @@ class GameState:
         self.blackout = self.fill_pct < BLACKOUT_THRESHOLD
         self.overflow = self.fill_pct >= 1.0
 
-        if self.blackout:
-            self._trigger_game_over("TOTAL BLACKOUT")
-        elif self.fill_pct >= MAX_FILL_PCT - 0.01:
-            self._trigger_game_over("GRID MELTDOWN")
+        if self.session_elapsed >= STARTUP_GRACE:
+            if self.blackout:
+                self._trigger_game_over("TOTAL BLACKOUT")
+            elif self.fill_pct >= MAX_FILL_PCT - 0.01:
+                self._trigger_game_over("GRID MELTDOWN")
         if self.game_over:
             return
 
@@ -280,7 +296,7 @@ class GameState:
         for the MW it actually produced, converted from real seconds elapsed
         into equivalent simulated hours so a full sim-day accrues a
         realistic-looking daily fuel bill instead of a tiny fraction."""
-        scarcity = bool(self.active_event and "HEAT WAVE" in self.active_event.name)
+        scarcity = bool(self.active_event and self.active_event.kind == "HEAT_WAVE")
         sim_hours_elapsed = dt / self.seconds_per_sim_hour()
 
         cost_rate = 0.0
@@ -312,6 +328,7 @@ class GameState:
     def _update_events(self, dt: float):
         solar = next(s for s in self.sources if s.key == "solar")
         wind = next(s for s in self.sources if s.key == "wind")
+        hydro = next(s for s in self.sources if s.key == "hydro")
 
         if self.active_event:
             ev = self.active_event
@@ -319,11 +336,13 @@ class GameState:
             if ev.remaining <= 0:
                 solar.event_availability_override = None
                 wind.event_availability_override = None
+                hydro.rain_multiplier = 1.0
                 self.active_event = None
                 self.next_event_in = random.uniform(EVENT_MIN_GAP, EVENT_MAX_GAP)
             else:
                 solar.event_availability_override = ev.solar_override
                 wind.event_availability_override = ev.wind_override
+                hydro.rain_multiplier = ev.hydro_boost
             return
 
         self.next_event_in -= dt

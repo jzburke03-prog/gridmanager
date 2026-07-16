@@ -2,9 +2,6 @@
 import math
 import pygame
 from sources.base_source import SourceStatus
-from sources.solar import SolarSource
-from sources.wind import WindSource
-from sources.hydro import HydroSource
 
 SLIDER_H = 60
 SLIDER_W = 16
@@ -82,14 +79,14 @@ class SpigotPanel:
         rel = (slider_rect.bottom - pos[1]) / slider_rect.height
         src.set_handle(max(0.0, min(1.0, rel)))
 
-    def draw(self, surface, sources, sim_hour, demand_level=0.5):
+    def draw(self, surface, sources, demand_level=0.5):
         pygame.draw.rect(surface, BG, self.rect)
         boxes = self._layout(len(sources))
         self._slider_rects = {}
         for src, box in zip(sources, boxes):
-            self._draw_widget(surface, src, box, sim_hour, demand_level)
+            self._draw_widget(surface, src, box, demand_level)
 
-    def _draw_widget(self, surface, src, box, sim_hour, demand_level):
+    def _draw_widget(self, surface, src, box, demand_level):
         card = box.inflate(-10, -10)
         pygame.draw.rect(surface, PANEL, card, border_radius=8)
         pygame.draw.rect(surface, tuple(min(255, c + 30) for c in src.color), card, width=2, border_radius=8)
@@ -152,35 +149,3 @@ class SpigotPanel:
         price_color = PRICE_CHEAP if price < 40 else (PRICE_MID if price < 80 else PRICE_EXPENSIVE)
         price_txt = self.font_small.render(f"${price:0.0f}/MWh", True, price_color)
         surface.blit(price_txt, (cx - price_txt.get_width() // 2, y))
-        y += price_txt.get_height() + 2
-
-        if isinstance(src, (SolarSource, WindSource)):
-            avail_txt = self.font_small.render("Availability", True, DIM)
-            surface.blit(avail_txt, (card.left + 10, y))
-            y += avail_txt.get_height() + 1
-            gauge_rect = pygame.Rect(card.left + 10, y, card.width - 20, 6)
-            pygame.draw.rect(surface, (15, 18, 28), gauge_rect)
-            pygame.draw.rect(surface, src.color, (gauge_rect.left, gauge_rect.top,
-                                                   gauge_rect.width * src.availability, gauge_rect.height))
-            y += gauge_rect.height + 3
-
-            if isinstance(src, WindSource):
-                fc_rect = pygame.Rect(card.left + 10, y, card.width - 20, 16)
-                pygame.draw.rect(surface, (15, 18, 28), fc_rect)
-                fc = src.forecast(sim_hour)
-                pts = []
-                for i, v in enumerate(fc):
-                    fx = fc_rect.left + fc_rect.width * i / (len(fc) - 1)
-                    fy = fc_rect.bottom - v * fc_rect.height
-                    pts.append((fx, fy))
-                if len(pts) > 1:
-                    pygame.draw.lines(surface, src.color, False, pts, 2)
-
-        if isinstance(src, HydroSource):
-            res_txt = self.font_small.render(f"Reservoir {src.reservoir_pct:0.0f}%", True, DIM)
-            surface.blit(res_txt, (card.left + 10, y))
-            y += res_txt.get_height() + 1
-            gauge_rect = pygame.Rect(card.left + 10, y, card.width - 20, 6)
-            pygame.draw.rect(surface, (15, 18, 28), gauge_rect)
-            pygame.draw.rect(surface, src.color, (gauge_rect.left, gauge_rect.top,
-                                                   gauge_rect.width * src.reservoir_pct / 100.0, gauge_rect.height))

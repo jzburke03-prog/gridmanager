@@ -17,7 +17,7 @@ def solar_availability(t: float) -> float:
 class SolarSource(EnergySource):
     def __init__(self):
         super().__init__(
-            name="Solar", key="solar", max_output_mw=500,
+            name="Solar", key="solar", max_output_mw=175,
             ramp_up_latency=1, ramp_down_latency=1,
             min_stable_output=0.0, can_shut_down=True,
             availability_fn=solar_availability,

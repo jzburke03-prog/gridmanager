@@ -2,7 +2,7 @@
 import math
 import pygame
 
-from game_state import SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD
+from game_state import SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD, MAX_FILL_PCT
 
 TEXT = (225, 230, 240)
 DIM = (150, 158, 176)
@@ -195,7 +195,7 @@ class HUD:
             label = "☠ CATASTROPHIC BLACKOUT" if severity > 0.7 else "⚠ BLACKOUT RISK"
             self._draw_warning(surface, label, (255, 120, 120), y, severity)
         elif fill_pct > SEVERE_HIGH_THRESHOLD:
-            span = 3.0 - SEVERE_HIGH_THRESHOLD
+            span = MAX_FILL_PCT - SEVERE_HIGH_THRESHOLD
             severity = min(1.0, (fill_pct - SEVERE_HIGH_THRESHOLD) / max(0.01, span))
             self._draw_vignette(surface, (255, 140, 20), severity)
             label = "☠ GRID MELTDOWN IMMINENT" if severity > 0.6 else "⚠ CRITICAL OVERLOAD"
