@@ -1,0 +1,236 @@
+"""Grid Keeper: entry point and game loop."""
+import math
+import random
+import sys
+import pygame
+
+from game_state import (GameState, WINDOW_WIDTH, WINDOW_HEIGHT, FPS,
+                         MAX_BOX_HEIGHT_PX, MAX_BOX_FOOTPRINT_PX,
+                         DEMAND_MIN_MW, DEMAND_PEAK_MW,
+                         SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD)
+from ui.demand_box import DemandBox
+from ui.demand_chart import DemandChart
+from ui.spigot_panel import SpigotPanel
+from ui.pipes import PipeSystem
+from ui.city_grid import CityGrid
+from ui.speed_control import SpeedControl
+from ui.hud import HUD
+
+BG_COLOR = (13, 17, 23)
+PANEL_COLOR = (28, 35, 51)
+
+TOP_HUD_HEIGHT = 220
+SPIGOT_HEIGHT = 250
+
+# Demand chart is now a small inset card tucked in the corner (per the pipes
+# layout sketch) instead of a full-width strip, freeing the whole lower area
+# for the box + its feeder pipes.
+CHART_W, CHART_H = 300, 170
+CHART_MARGIN = 18
+
+# Isometric box clearance: the box's on-screen footprint extends the vessel's
+# silhouette well past its "height" alone (its nearest corner drops another
+# footprint/2 px below center, and it spans footprint*sqrt(3) px wide), so the
+# scale-to-fit math has to account for the whole diamond, not just height vs.
+# box_rect.height, or the box clips into the panels above/below it.
+BOX_TOP_MARGIN = 20
+BOX_BOTTOM_MARGIN = 24
+BOX_SIDE_MARGIN = 40
+ISO_HALF_WIDTH_RATIO = math.cos(math.radians(30))  # x-extent of footprint_px per side
+
+
+def _supply_mix_tint(sources):
+    """Blend each source's color weighted by its share of current output, so
+    the tank visibly reflects what's actually filling it right now."""
+    total = sum(s.current_output_mw for s in sources)
+    if total <= 1.0:
+        return None
+    r = g = b = 0.0
+    for s in sources:
+        weight = s.current_output_mw / total
+        r += s.color[0] * weight
+        g += s.color[1] * weight
+        b += s.color[2] * weight
+    return (r, g, b)
+
+
+def compute_layout(screen_w, screen_h):
+    spigot_rect = pygame.Rect(0, TOP_HUD_HEIGHT, screen_w, SPIGOT_HEIGHT)
+    box_rect = pygame.Rect(0, spigot_rect.bottom, screen_w,
+                            max(160, screen_h - TOP_HUD_HEIGHT - SPIGOT_HEIGHT))
+    chart_rect = pygame.Rect(box_rect.left + CHART_MARGIN, box_rect.bottom - CHART_H - CHART_MARGIN,
+                              CHART_W, CHART_H)
+    city_rect = pygame.Rect(box_rect.right - CHART_W - CHART_MARGIN, box_rect.bottom - CHART_H - CHART_MARGIN,
+                             CHART_W, CHART_H)
+    return spigot_rect, box_rect, chart_rect, city_rect
+
+
+def _severity(fill_pct):
+    """0..1 how catastrophic the current fill level is, 0 in the safe middle
+    band, ramping up past either extreme. Drives screen shake."""
+    if fill_pct < SEVERE_LOW_THRESHOLD:
+        return (SEVERE_LOW_THRESHOLD - max(0.0, fill_pct)) / SEVERE_LOW_THRESHOLD
+    if fill_pct > SEVERE_HIGH_THRESHOLD:
+        return min(1.0, (fill_pct - SEVERE_HIGH_THRESHOLD) / max(0.01, 3.0 - SEVERE_HIGH_THRESHOLD))
+    return 0.0
+
+
+def main():
+    pygame.init()
+    pygame.display.set_caption("Grid Keeper: Energy Demand Management")
+    screen = pygame.display.set_mode(
+        (WINDOW_WIDTH, WINDOW_HEIGHT),
+        pygame.DOUBLEBUF | pygame.HWSURFACE | pygame.RESIZABLE,
+    )
+    clock = pygame.time.Clock()
+
+    mono_path = pygame.font.match_font("menlo,consolas,couriernew,monospace")
+    font = pygame.font.Font(mono_path, 16)
+    font_small = pygame.font.Font(mono_path, 13)
+    font_bold = pygame.font.Font(mono_path, 16)
+    font_big = pygame.font.Font(mono_path, 24)
+    font_mono_big = pygame.font.Font(mono_path, 40)
+
+    state = GameState()
+
+    spigot_rect, box_rect, chart_rect, city_rect = compute_layout(WINDOW_WIDTH, WINDOW_HEIGHT)
+    spigot_panel = SpigotPanel(spigot_rect, font, font_small, font_bold)
+    demand_box = DemandBox(center=(WINDOW_WIDTH // 2, box_rect.top + box_rect.height - 40))
+    demand_chart = DemandChart(chart_rect, font_small)
+    city_grid = CityGrid(city_rect, font_small)
+    speed_control = SpeedControl((24, 96), font_small, font)
+    pipes = PipeSystem()
+    hud = HUD(font, font_small, font_big, font_mono_big)
+
+    # depth=24 forces NO alpha byte. pygame.Surface() defaults to 32-bit with
+    # an alpha channel on this platform (even without SRCALPHA), and blitting
+    # the many SRCALPHA sub-surfaces used throughout (pipes, water, overflow)
+    # onto a surface that has one overwrites its alpha with the source's —
+    # even in fully-transparent regions — instead of leaving it at 255. That
+    # silently zeroed frame's alpha wherever anything was drawn, making
+    # everything after the first SRCALPHA blit vanish once composited to
+    # `screen`.
+    frame = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), depth=24)
+    shake_x, shake_y = 0.0, 0.0
+
+    running = True
+    while running:
+        dt = clock.tick(FPS) / 1000.0
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key == pygame.K_SPACE:
+                    state.paused = not state.paused
+                elif event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
+                    state.speed_up()
+                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    state.speed_down()
+                elif event.key == pygame.K_r and state.game_over:
+                    state = GameState()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if not speed_control.handle_mouse_down(event.pos, state):
+                    spigot_panel.handle_mouse_down(event.pos, state.sources)
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                spigot_panel.handle_mouse_up()
+            elif event.type == pygame.MOUSEMOTION:
+                spigot_panel.handle_mouse_motion(event.pos, state.sources)
+
+        state.update(dt)
+
+        # Recompute layout every frame from the actual surface size so resizing
+        # or maximizing the window never leaves stale/mismatched panel rects.
+        screen_w, screen_h = screen.get_size()
+        spigot_rect, box_rect, chart_rect, city_rect = compute_layout(screen_w, screen_h)
+        spigot_panel.rect = spigot_rect
+        demand_chart.rect = chart_rect
+        city_grid.rect = city_rect
+
+        if frame.get_size() != (screen_w, screen_h):
+            frame = pygame.Surface((screen_w, screen_h), depth=24)
+
+        # Fit-to-space scale: sized against the box's absolute MAX height/footprint
+        # (not the current instantaneous demand) so it never grows into a clip as
+        # demand rises later. Full iso vertical silhouette = height + the WHOLE
+        # footprint: the base's near corner hangs footprint/2 below center AND the
+        # top diamond's back corner rises footprint/2 above the height line.
+        max_vertical_span = MAX_BOX_HEIGHT_PX + MAX_BOX_FOOTPRINT_PX
+        max_horizontal_span = MAX_BOX_FOOTPRINT_PX * 2 * ISO_HALF_WIDTH_RATIO
+        k_vertical = (box_rect.height - BOX_TOP_MARGIN - BOX_BOTTOM_MARGIN) / max_vertical_span
+        k_horizontal = (box_rect.width - 2 * BOX_SIDE_MARGIN) / max_horizontal_span
+        box_scale_ui = max(0.4, min(k_vertical, k_horizontal, 3.0))
+
+        box_height_px = state.box_height_px * box_scale_ui
+        box_footprint_px = state.box_footprint_px * box_scale_ui
+
+        # Anchor the box to a fixed floor line so it grows upward/outward from
+        # a stable base rather than drifting as its footprint changes.
+        floor_y = box_rect.bottom - BOX_BOTTOM_MARGIN
+        demand_box.center = (screen_w // 2, floor_y - box_footprint_px / 2)
+        box_top_point = (demand_box.center[0], demand_box.center[1] - box_height_px)
+
+        frame.fill(BG_COLOR)
+
+        pygame.draw.rect(frame, PANEL_COLOR, spigot_rect)
+        pygame.draw.line(frame, (10, 13, 20), (0, spigot_rect.bottom), (screen_w, spigot_rect.bottom), 2)
+        spigot_panel.draw(frame, state.sources, state.sim_hour, state.demand_level)
+
+        pygame.draw.rect(frame, BG_COLOR, box_rect)
+
+        # feeder pipes: drawn before the box so their ends tuck behind the rim.
+        # Droplets keep falling past the rim down to the CURRENT water surface
+        # (not a fixed point), so they visibly land wherever the tank's fill
+        # level actually is instead of splashing in empty space near the top.
+        clamped_fill = max(0.0, min(1.0, state.fill_pct_display))
+        water_drop_px = box_height_px * (1.0 - clamped_fill)
+        source_x = spigot_panel.source_x_centers(state.sources)
+        pipes.draw(frame, state.sources, source_x, spigot_rect.bottom, box_top_point, box_rect,
+                  water_drop_px)
+
+        # net grid imbalance drives how agitated the water surface is
+        agitation = max(-1.5, min(1.5, (state.total_actual_mw - state.demand_mw) / 1500.0))
+        tint_rgb = _supply_mix_tint(state.sources)
+        rim_color, fill_lbl = demand_box.draw(frame, box_height_px, box_footprint_px,
+                                              state.fill_pct_display, agitation, tint_rgb)
+
+        demand_chart.draw(frame, state.sim_hour, state.sources, state.history,
+                          state.demand_mw, DEMAND_MIN_MW, DEMAND_PEAK_MW)
+        city_grid.draw(frame, state.fill_pct_display)
+
+        hud.draw(frame, state, rim_color, fill_lbl)
+        speed_control.draw(frame, state)
+
+        if state.game_over:
+            hud.draw_game_over(frame, state)
+
+        # Screen shake at extreme over/undersupply: the whole frame is drawn
+        # to an offscreen surface so it can be jittered as one unit, instead
+        # of just flashing a vignette while everything else sits static. The
+        # target offset is low-pass filtered rather than applied raw, so it
+        # wanders smoothly instead of teleporting to a new random position
+        # every single frame (a 60Hz jitter reads as harsh/flickery).
+        severity = 0.0 if state.game_over else _severity(state.fill_pct_display)
+        if severity > 0.05:
+            mag = severity * 6
+            target_x = random.uniform(-mag, mag)
+            target_y = random.uniform(-mag, mag)
+        else:
+            target_x = target_y = 0.0
+        shake_x += (target_x - shake_x) * 0.3
+        shake_y += (target_y - shake_y) * 0.3
+
+        screen.fill(BG_COLOR)
+        screen.blit(frame, (int(shake_x), int(shake_y)))
+
+        pygame.display.flip()
+
+    state.persist_high_score()
+    pygame.quit()
+    sys.exit()
+
+
+if __name__ == "__main__":
+    main()
