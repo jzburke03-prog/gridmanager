@@ -14,6 +14,11 @@ import pygame
 
 BG = (12, 15, 24)
 BORDER = (55, 64, 86)
+LABEL_DIM = (150, 158, 176)
+LABEL_OK = (100, 220, 140)
+LABEL_WARN = (240, 170, 80)
+LABEL_BAD = (230, 90, 90)
+LABEL_GAP = 6           # breathing room between the label block and the panel
 SKY_DIM = (26, 32, 48)
 BUILDING_OFF = (30, 36, 52)
 BUILDING_ON = (46, 56, 78)
@@ -43,13 +48,40 @@ class CityGrid:
 
     SPARK_LIFE = 0.7
 
-    def __init__(self, rect: pygame.Rect, font):
+    def __init__(self, rect: pygame.Rect, font, font_label=None):
         self.rect = rect
         self.font = font
+        self.font_label = font_label or font
         self.t = 0.0
         self._rng = random.Random(2024)
         self.buildings = self._make_buildings()
         self._sparks = []  # [age, x, y]
+
+    # -- world-attached label ---------------------------------------------
+
+    def label_rect(self) -> pygame.Rect:
+        """Space the homes label needs, directly above the city panel. Derived
+        from self.rect so it tracks the panel through any resize instead of
+        sitting at fixed screen coordinates."""
+        h = self.font.get_height() + self.font_label.get_height() + 2
+        return pygame.Rect(self.rect.left, self.rect.top - LABEL_GAP - h, self.rect.width, h)
+
+    def draw_homes_label(self, surface, homes_out: float, homes_total: float):
+        """"Homes Without Power" belongs to the city, not the top HUD, so it is
+        drawn here: centred over the skyline and clear of the buildings."""
+        if homes_out > 500:
+            color = LABEL_BAD if homes_out > homes_total * 0.5 else LABEL_WARN
+            caption, value = "HOMES WITHOUT POWER", f"{homes_out:,.0f}"
+        else:
+            color = LABEL_OK
+            caption, value = "HOMES WITHOUT POWER", "0"
+
+        rect = self.label_rect()
+        cap_txt = self.font.render(caption, True, LABEL_DIM)
+        val_txt = self.font_label.render(value, True, color)
+        surface.blit(cap_txt, (rect.centerx - cap_txt.get_width() // 2, rect.top))
+        surface.blit(val_txt, (rect.centerx - val_txt.get_width() // 2,
+                               rect.top + cap_txt.get_height() + 2))
 
     def _make_buildings(self):
         buildings = []

@@ -90,7 +90,7 @@ class HUD:
             self._scrim_key = key
         return self._scrim
 
-    def draw(self, surface, state, rim_color, fill_label, hud_band_height=220):
+    def draw(self, surface, state, hud_band_height=220):
         self._t += 1 / 60.0
         w, h = surface.get_size()
 
@@ -173,26 +173,16 @@ class HUD:
             f"GRID PRICE ${state.grid_price:0.0f}/MWh  ·  {_format_money(state.cost_per_hour)}/hr",
             True, _price_color(state.grid_price))
         surface.blit(price_txt, (w // 2 - price_txt.get_width() // 2, y))
-        y += price_txt.get_height() + 6
+        y += price_txt.get_height() + 10
 
-        # households without power — the human stakes of the shortfall, not
-        # just an abstract MW gap
-        homes_out = state.homes_without_power
-        if homes_out > 500:
-            homes_color = (230, 90, 90) if homes_out > state.homes_total * 0.5 else (240, 170, 80)
-            homes_txt = self.font.render(f"🏠 {homes_out / 1_000_000:,.2f}M HOMES WITHOUT POWER",
-                                          True, homes_color)
-        else:
-            homes_txt = self.font.render("🏠 ALL HOMES POWERED", True, (100, 220, 140))
-        surface.blit(homes_txt, (w // 2 - homes_txt.get_width() // 2, y))
-        y += homes_txt.get_height() + 6
-
-        # reservoir tank badge — smaller, secondary: this is the box's own
-        # buffered fill level (can lag well behind the live ratio above)
-        tank_txt = self.font_small.render(
-            f"RESERVOIR {min(state.fill_pct_display, 9.99) * 100:0.0f}%  ·  {fill_label}", True, rim_color)
-        surface.blit(tank_txt, (w // 2 - tank_txt.get_width() // 2, y))
-        y += tank_txt.get_height() + 10
+        # The reservoir badge used to sit here. It was redundant with the big
+        # ratio readout above (both answer "am I meeting demand"), and the tank
+        # itself already shows the same thing in water — the mechanic and its
+        # graphic are untouched, only this duplicate metric is gone.
+        # "Homes without power" also used to sit here; it is a fact about the
+        # city, so it is now drawn above the city graphic (see ui/city_grid).
+        # `y` is a running cursor, so both removals close up automatically and
+        # everything below simply moves up.
 
         # active grid event banner with live countdown
         if state.active_event:
@@ -242,6 +232,17 @@ class HUD:
 
         if state.celebrate_high_score > 0:
             self._draw_success_toast(surface)
+
+    def draw_audio_indicator(self, surface, audio, pos):
+        """Small muted/unmuted readout. Sits with the other always-on controls."""
+        if audio.available:
+            label = "AUDIO MUTED (M)" if audio.muted else "AUDIO ON (M)"
+            color = (240, 200, 90) if audio.muted else DIM
+        else:
+            label = "NO AUDIO DEVICE"
+            color = (110, 116, 130)
+        txt = self.font_small.render(label, True, color)
+        surface.blit(txt, pos)
 
     def _draw_success_toast(self, surface):
         """Thumbs-up beside the game's existing new-personal-best event. The

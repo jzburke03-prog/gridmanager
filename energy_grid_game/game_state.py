@@ -126,11 +126,22 @@ def score_delta(fill_pct: float) -> float:
         return -50   # meltdown: wildly overproducing
 
 
+DAY_START_HOUR = 4.0               # a day runs 04:00 -> 04:00
+SIM_HOURS_PER_DAY = 24.0
+
+
 class GameState:
     def __init__(self):
-        self.sim_hour = 4.0        # game begins at 04:00 AM
+        self.sim_hour = DAY_START_HOUR   # game begins at 04:00 AM
         self.game_speed = 1.0
         self.paused = False
+
+        # Day cycle. day_hours accumulates elapsed sim hours rather than watching
+        # sim_hour wrap, so a full day is always 24 sim-hours from 04:00 no matter
+        # what speed the player runs at. The UI owns the pause/confirm flow.
+        self.day = 1
+        self.day_hours = 0.0
+        self.day_complete = False
 
         self.demand_level = demand_at_hour(self.sim_hour)
         self.box_scale = 0.0             # smoothed 0..1 size fraction (drives height AND footprint)
@@ -222,13 +233,32 @@ class GameState:
         self.game_over_reason = reason
         self.persist_high_score()
 
+    def start_next_day(self):
+        """Initialise the next day. Called exactly once per confirmed rollover by
+        the day panel's ADVANCING_DAY phase."""
+        self.day += 1
+        self.day_hours = 0.0
+        self.day_complete = False
+        self.sim_hour = DAY_START_HOUR
+        self.demand_level = demand_at_hour(self.sim_hour)
+        self.history = []
+        self._history_last_hour = None
+
     def update(self, dt: float):
-        if self.paused or self.game_over:
+        if self.paused or self.game_over or self.day_complete:
             return
         dt *= self.game_speed
         self.session_elapsed += dt
 
-        self.sim_hour = (self.sim_hour + dt / self.seconds_per_sim_hour()) % 24.0
+        sim_hours = dt / self.seconds_per_sim_hour()
+        self.sim_hour = (self.sim_hour + sim_hours) % 24.0
+        self.day_hours += sim_hours
+        if self.day_hours >= SIM_HOURS_PER_DAY:
+            # Freeze here and let the day panel take over. Everything below this
+            # point (pricing, scoring, events) is skipped until the player
+            # confirms, so nothing accrues while the panel is up.
+            self.day_complete = True
+            return
         self.demand_level = demand_at_hour(self.sim_hour)
 
         self._update_events(dt)

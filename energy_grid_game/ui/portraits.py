@@ -1,32 +1,25 @@
-"""Mentor artwork loading: transparency keying, nearest-neighbor scaling, caching.
+"""Mentor artwork: loading, nearest-neighbor scaling, nine-slicing, caching.
 
-The five mentor PNGs in assets/mentor are not uniform. Gattie_GoodJob and
-Gattie_Angry are true RGBA with a real alpha channel. Gattie_Explaining_Talking,
-Gattie_Explaining_Pointing and chatbox.png are RGB with NO alpha channel at all —
-they have the light checkerboard "transparent background" pattern baked into
-their pixels (~76% of each portrait). Blitting those as-is would drop a big
-opaque near-white slab over the game.
-
-So the matte is keyed off at load: a flood fill from the image border through
-near-white pixels only. It has to be a flood fill and not a plain threshold —
-Gattie's hair, beard and gingham shirt contain near-white pixels too, and a
-threshold key punches holes straight through them. Only background reachable
-from the border is cleared; the character's own pixels are never touched.
+Every asset in assets/mentor is expected to be a real transparent RGBA PNG.
+Three of them originally shipped as RGB with the light "transparency
+checkerboard" baked into their pixels; they were corrected once, permanently, by
+tools/fix_portrait_mattes.py rather than being keyed at runtime. If an asset ever
+turns up without alpha again, load() says so loudly and names the fix instead of
+silently papering over it with a blanket white-removal rule (which would punch
+holes through Gattie's hair, beard, eyes and gingham shirt).
 
 Scaling is always pygame.transform.scale (nearest-neighbor), never smoothscale,
-so the pixel art stays sharp instead of going soft.
+so the pixel art stays sharp.
 """
 from pathlib import Path
 
-import numpy as np
 import pygame
 
 # energy_grid_game/ui/portraits.py -> repo root -> assets/mentor
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "mentor"
 
-# Portrait roles used by the tutorial and the outcome screens. Note there is no
-# sad/disappointed artwork in the repo: failure states use ANGRY, success uses
-# HAPPY, and ordinary narration uses the two neutral explaining poses.
+# Portrait roles. Note there is no sad/disappointed artwork in the repo: failure
+# uses ANGRY, success uses HAPPY, narration uses the two explaining poses.
 NEUTRAL = "neutral"
 POINTING = "pointing"
 HAPPY = "happy"
@@ -41,78 +34,13 @@ _FILES = {
     CHATBOX: "chatbox.png",
 }
 
-# A pixel is background only if every channel is at least this bright AND it is
-# reachable from the image border. The baked checkerboard alternates between
-# roughly 243 and 255.
-_MATTE_THRESHOLD = 238
-
-# chatbox.png: the cream writing area, as a fraction of the cropped frame.
-# Measured off the asset itself rather than guessed.
-CHATBOX_INSET_X = 0.0278
-CHATBOX_INSET_TOP = 0.0772
-CHATBOX_INSET_BOTTOM = 0.0723
+# chatbox.png nine-slice: the frame's border is 43-48px thick in the source art,
+# so 48 is the smallest corner that captures a whole corner ornament.
+CHATBOX_SRC_CORNER = 48
 
 _raw_cache = {}
 _scaled_cache = {}
-
-
-def _flood_matte(light: np.ndarray) -> np.ndarray:
-    """Scanline flood fill. `light` is a (w, h) bool array of near-white pixels;
-    returns the subset reachable from the image border. Span-filling a whole row
-    at a time keeps this ~30x faster than a per-pixel queue (~0.15s vs ~5s for a
-    1086x1448 portrait), which matters because it runs at asset load."""
-    w, h = light.shape
-    filled = np.zeros_like(light)
-    stack = []
-    for x in range(w):
-        for y in (0, h - 1):
-            if light[x, y]:
-                stack.append((x, y))
-    for y in range(h):
-        for x in (0, w - 1):
-            if light[x, y]:
-                stack.append((x, y))
-
-    while stack:
-        x, y = stack.pop()
-        if filled[x, y] or not light[x, y]:
-            continue
-        row = light[:, y]
-        done = filled[:, y]
-        x0 = x
-        while x0 > 0 and row[x0 - 1] and not done[x0 - 1]:
-            x0 -= 1
-        x1 = x
-        while x1 < w - 1 and row[x1 + 1] and not done[x1 + 1]:
-            x1 += 1
-        filled[x0:x1 + 1, y] = True
-        for ny in (y - 1, y + 1):
-            if not (0 <= ny < h):
-                continue
-            span = light[x0:x1 + 1, ny] & ~filled[x0:x1 + 1, ny]
-            idx = np.flatnonzero(span)
-            if idx.size == 0:
-                continue
-            # one seed per contiguous run in the span above/below
-            breaks = np.flatnonzero(np.diff(idx) > 1)
-            starts = np.concatenate(([idx[0]], idx[breaks + 1]))
-            for s in starts:
-                stack.append((x0 + int(s), ny))
-    return filled
-
-
-def _key_matte(surface: pygame.Surface) -> pygame.Surface:
-    """Clear the baked-in near-white background of an RGB asset to transparent."""
-    rgb = pygame.surfarray.array3d(surface)
-    light = (rgb >= _MATTE_THRESHOLD).all(axis=2)
-    matte = _flood_matte(light)
-
-    out = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-    pygame.surfarray.blit_array(out, rgb)
-    alpha = pygame.surfarray.pixels_alpha(out)
-    alpha[:] = np.where(matte, 0, 255).astype(np.uint8)
-    del alpha  # release the surface lock before the surface is used
-    return out
+_slice_cache = {}
 
 
 def _crop_to_content(surface: pygame.Surface) -> pygame.Surface:
@@ -125,7 +53,7 @@ def _crop_to_content(surface: pygame.Surface) -> pygame.Surface:
 
 
 def load(key: str) -> pygame.Surface:
-    """Load a mentor asset, keyed and cropped, at its native resolution."""
+    """Load a mentor asset at native resolution, cropped to its artwork."""
     if key in _raw_cache:
         return _raw_cache[key]
     if key not in _FILES:
@@ -136,11 +64,12 @@ def load(key: str) -> pygame.Surface:
         raise FileNotFoundError(f"mentor asset missing: {path}")
 
     surface = pygame.image.load(str(path))
-    if surface.get_bitsize() < 32 or surface.get_masks()[3] == 0:
-        surface = _key_matte(surface)      # RGB asset: strip the baked matte
-    else:
-        surface = surface.convert_alpha()  # already has real alpha
-    surface = _crop_to_content(surface)
+    if surface.get_bitsize() != 32 or surface.get_masks()[3] == 0:
+        raise ValueError(
+            f"{path.name} has no alpha channel. Mentor art must be transparent "
+            f"RGBA; run: python tools/fix_portrait_mattes.py"
+        )
+    surface = _crop_to_content(surface.convert_alpha())
     _raw_cache[key] = surface
     return surface
 
@@ -164,8 +93,64 @@ def scaled_to_height(key: str, height: int) -> pygame.Surface:
     return out
 
 
-def scaled_to_width(key: str, width: int) -> pygame.Surface:
-    """Nearest-neighbor scale to `width` px, preserving aspect."""
+def fit_within(key: str, max_w: int, max_h: int) -> pygame.Surface:
+    """Largest nearest-neighbor scale of `key` fitting inside the box, aspect
+    preserved. The portraits have very different aspect ratios, so callers that
+    reserve a slot need to fit both dimensions, not just height."""
     src = load(key)
     w, h = src.get_size()
-    return scaled_to_height(key, max(1, round(h * width / w)))
+    scale = min(max_w / w, max_h / h)
+    return scaled_to_height(key, max(1, int(h * scale)))
+
+
+def nine_slice(key: str, size, corner: int) -> pygame.Surface:
+    """Rebuild a framed panel at an arbitrary size, keeping the border crisp.
+
+    Plain scaling can't give the dialogue box a short, wide shape: the chatbox
+    art is fixed at 2.49:1, and squashing it to fit distorts the border into
+    smeared rectangles. Nine-slicing keeps the corners at a fixed size, stretches
+    the edges along their own axis only, and fills the middle with the asset's
+    own paper color. The middle is filled rather than stretched because the
+    source's centre carries a baked decorative arrow that would smear across the
+    whole panel; the dialogue draws its own continue indicator instead.
+    """
+    w, h = int(size[0]), int(size[1])
+    corner = max(1, int(corner))
+    cache_key = (key, w, h, corner)
+    hit = _slice_cache.get(cache_key)
+    if hit is not None:
+        return hit
+
+    src = load(key)
+    sw, sh = src.get_size()
+    sc = min(CHATBOX_SRC_CORNER, sw // 2, sh // 2)
+    corner = min(corner, w // 2, h // 2)
+
+    out = pygame.Surface((w, h), pygame.SRCALPHA)
+    paper = src.get_at((sw // 2, sh // 2))  # clean centre of the cream area
+    inner = pygame.Rect(corner, corner, max(0, w - 2 * corner), max(0, h - 2 * corner))
+    if inner.width and inner.height:
+        out.fill(paper, inner)
+
+    mid_w, mid_h = max(0, w - 2 * corner), max(0, h - 2 * corner)
+    src_mid_w, src_mid_h = sw - 2 * sc, sh - 2 * sc
+
+    def piece(area, dst_size, dst_pos):
+        if dst_size[0] <= 0 or dst_size[1] <= 0:
+            return
+        part = src.subsurface(pygame.Rect(*area))
+        out.blit(pygame.transform.scale(part, dst_size), dst_pos)
+
+    # edges: stretched along their own axis only
+    piece((sc, 0, src_mid_w, sc), (mid_w, corner), (corner, 0))
+    piece((sc, sh - sc, src_mid_w, sc), (mid_w, corner), (corner, h - corner))
+    piece((0, sc, sc, src_mid_h), (corner, mid_h), (0, corner))
+    piece((sw - sc, sc, sc, src_mid_h), (corner, mid_h), (w - corner, corner))
+    # corners: never stretched
+    piece((0, 0, sc, sc), (corner, corner), (0, 0))
+    piece((sw - sc, 0, sc, sc), (corner, corner), (w - corner, 0))
+    piece((0, sh - sc, sc, sc), (corner, corner), (0, h - corner))
+    piece((sw - sc, sh - sc, sc, sc), (corner, corner), (w - corner, h - corner))
+
+    _slice_cache[cache_key] = out
+    return out

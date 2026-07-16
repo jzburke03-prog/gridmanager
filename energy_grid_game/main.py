@@ -17,6 +17,8 @@ from ui.speed_control import SpeedControl
 from ui.hud import HUD
 from ui.sky import SkyLayer
 from ui.tutorial import TutorialManager
+from ui.day_panel import DayCompletePanel
+from audio import AudioManager
 
 BG_COLOR = (13, 17, 23)
 PANEL_COLOR = (28, 35, 51)
@@ -99,12 +101,14 @@ def main():
     spigot_panel = SpigotPanel(spigot_rect, font, font_small, font_bold)
     demand_box = DemandBox(center=(WINDOW_WIDTH // 2, box_rect.top + box_rect.height - 40))
     demand_chart = DemandChart(chart_rect, font_small)
-    city_grid = CityGrid(city_rect, font_small)
+    city_grid = CityGrid(city_rect, font_small, font)
     speed_control = SpeedControl((24, 96), font_small, font)
     pipes = PipeSystem()
     hud = HUD(font, font_small, font_big, font_mono_big)
     sky = SkyLayer()
-    tutorial = TutorialManager(font, font_small, font_big)
+    tutorial = TutorialManager(font, font_small, font)
+    day_panel = DayCompletePanel(font, font_small, font_big)
+    audio = AudioManager()
 
     # depth=24 forces NO alpha byte. pygame.Surface() defaults to 32-bit with
     # an alpha channel on this platform (even without SRCALPHA), and blitting
@@ -116,44 +120,71 @@ def main():
     # `screen`.
     frame = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), depth=24)
     shake_x, shake_y = 0.0, 0.0
+    was_game_over = False
+    was_blackout = False
+    was_celebrating = False
 
     running = True
     while running:
         dt = clock.tick(FPS) / 1000.0
 
+        # Input priority: outcome screen > day panel > tutorial > gameplay. Once
+        # a layer claims an event nothing below it sees that event at all.
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
                 continue
-            # The tutorial gets first refusal on input: it swallows its own
-            # advance/skip clicks so they can't reach the grid underneath, and
-            # passes through anything it doesn't own.
-            if tutorial.handle_event(event):
-                continue
+
+            # Always-live keys, whatever is on screen.
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_SPACE:
+                    continue
+                if event.key == pygame.K_m:
+                    audio.toggle_mute()
+                    continue
+
+            # 1. success/failure screen
+            if state.game_over:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                    # Retry: a fresh grid, but NOT a fresh tutorial. Completed
+                    # steps stay completed and the box does not reopen.
+                    state = GameState()
+                    tutorial.close_for_retry()
+                    day_panel.reset()
+                    audio.unduck_music()
+                continue  # nothing else reaches the grid behind the overlay
+
+            # 2. day-complete panel
+            if day_panel.handle_event(event, audio):
+                continue
+
+            # 3. tutorial / dialogue
+            if tutorial.handle_event(event, audio):
+                continue
+
+            # 4/5. normal gameplay
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
                     state.paused = not state.paused
                 elif event.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
                     state.speed_up()
                 elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                     state.speed_down()
-                elif event.key == pygame.K_r:
-                    # R starts a new game, and a new game starts with the tutorial
-                    state = GameState()
-                    tutorial = TutorialManager(font, font_small, font_big)
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if not speed_control.handle_mouse_down(event.pos, state):
+                if speed_control.handle_mouse_down(event.pos, state):
+                    audio.play("ui_click")
+                else:
                     spigot_panel.handle_mouse_down(event.pos, state.sources)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 spigot_panel.handle_mouse_up()
             elif event.type == pygame.MOUSEMOTION:
                 spigot_panel.handle_mouse_motion(event.pos, state.sources)
 
-        # The tutorial freezes the sim while it's talking, and releases it for
-        # steps that ask the player to actually do something.
-        if not tutorial.blocks_gameplay():
+        # The tutorial freezes the sim while it's talking and releases it for
+        # steps that need the player to act; the day panel and the outcome
+        # screen freeze it outright.
+        if not (tutorial.blocks_gameplay() or day_panel.blocks_gameplay() or state.game_over):
             state.update(dt)
 
         # Recompute layout every frame from the actual surface size so resizing
@@ -187,10 +218,12 @@ def main():
         demand_box.center = (screen_w // 2, floor_y - box_footprint_px / 2)
         box_top_point = (demand_box.center[0], demand_box.center[1] - box_height_px)
 
-        # Highlight targets handed to the tutorial, taken from the real layout
-        # rects so they stay correct through a resize instead of being guessed.
+        # Named screen regions: highlight targets for the tutorial, and the rects
+        # overlays must not cover. Taken from the real layout so they stay correct
+        # through a resize instead of being guessed. The tank rect is the full
+        # isometric silhouette, not just the height.
         tank_half_w = box_footprint_px * ISO_HALF_WIDTH_RATIO
-        tutorial.update(dt, state, {
+        regions = {
             "supply_demand": pygame.Rect(screen_w // 2 - 190, 14, 380, 150),
             "spigot_panel": spigot_rect,
             "gas_card": spigot_panel.card_rects(state.sources).get("gas"),
@@ -200,11 +233,35 @@ def main():
                 tank_half_w * 2,
                 box_height_px + box_footprint_px,
             ),
+            "city": city_rect.union(city_grid.label_rect()),
             "speed_control": speed_control.bounds(),
-        })
+        }
 
+        # The outcome screen and the day panel both suppress the tutorial: a
+        # failure or a day rollover must never drive tutorial dialogue.
+        if not (state.game_over or day_panel.blocks_gameplay()):
+            tutorial.update(dt, state, regions, audio)
+        day_panel.update(dt, state, regions, audio)
+
+        # --- audio cues, fired on state transitions (never per frame) ---
+        audio.play_music("gameplay")  # idempotent: a no-op once it's playing
+        if state.game_over and not was_game_over:
+            audio.play("failure")
+            audio.duck_music()
+        was_game_over = state.game_over
+        if state.blackout and not was_blackout and not state.game_over:
+            audio.play("emergency")
+        was_blackout = state.blackout
+        celebrating = state.celebrate_high_score > 0
+        if celebrating and not was_celebrating:
+            audio.play("success")
+        was_celebrating = celebrating
+
+        # ---- render, back to front ----
+        # 1. time-of-day background
         sky.draw(frame, frame.get_rect(), state.sim_hour, state.active_event)
 
+        # 2. world / game objects
         pygame.draw.rect(frame, PANEL_COLOR, spigot_rect)
         pygame.draw.line(frame, (10, 13, 20), (0, spigot_rect.bottom), (screen_w, spigot_rect.bottom), 2)
         spigot_panel.draw(frame, state.sources, state.demand_level)
@@ -222,17 +279,30 @@ def main():
         # net grid imbalance drives how agitated the water surface is
         agitation = max(-1.5, min(1.5, (state.total_actual_mw - state.demand_mw) / 620.0))
         tint_rgb = _supply_mix_tint(state.sources)
-        rim_color, fill_lbl = demand_box.draw(frame, box_height_px, box_footprint_px,
-                                              state.fill_pct_display, agitation, tint_rgb)
 
+        # 3. water tank and city graphics
+        demand_box.draw(frame, box_height_px, box_footprint_px,
+                        state.fill_pct_display, agitation, tint_rgb)
         demand_chart.draw(frame, state.sim_hour, state.sources, state.history,
                           state.demand_mw, DEMAND_MIN_MW, DEMAND_PEAK_MW)
         city_grid.draw(frame, state.fill_pct_display)
 
-        hud.draw(frame, state, rim_color, fill_lbl, TOP_HUD_HEIGHT)
-        speed_control.draw(frame, state)
-        tutorial.draw(frame)
+        # 4. world-attached labels
+        city_grid.draw_homes_label(frame, state.homes_without_power, state.homes_total)
 
+        # 5. normal HUD
+        hud.draw(frame, state, TOP_HUD_HEIGHT)
+        speed_control.draw(frame, state)
+        hud.draw_audio_indicator(frame, audio, (24, speed_control.bounds().bottom + 6))
+
+        # 6. highlights and tutorial indicators
+        tutorial.draw_highlight(frame)
+
+        # 7. dialogue / end-of-day panel
+        tutorial.draw(frame)
+        day_panel.draw(frame)
+
+        # 8. success / failure overlay
         if state.game_over:
             hud.draw_game_over(frame, state)
 
