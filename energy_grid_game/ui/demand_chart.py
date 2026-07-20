@@ -16,7 +16,7 @@ LABEL_HOURS = [0, 6, 12, 18, 24]
 
 # bottom -> top stacking order: firm baseload first, variable/peaking last,
 # echoing the classic utility dispatch-stack chart
-STACK_ORDER = ["nuclear", "coal", "gas", "hydro", "wind", "solar"]
+STACK_ORDER = ["nuclear", "coal", "gas", "peaker", "hydro", "wind", "solar"]
 
 
 class DemandChart:

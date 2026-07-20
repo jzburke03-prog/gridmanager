@@ -18,3 +18,29 @@ def demand_curve_samples(n: int = 288):
     hours = np.linspace(0, 24, n)
     values = [demand_at_hour(h) for h in hours]
     return hours, values
+
+
+class DemandProfile:
+    """The demand shape over a day as a 0..1 curve. Either driven by 24 real
+    hourly points (from EIA) with linear interpolation, or the synthetic
+    default curve. GameState calls level_at() every frame; the chart uses
+    samples() for its silhouette preview."""
+
+    def __init__(self, hourly=None):
+        # hourly: list of 24 normalized 0..1 values indexed by local clock hour
+        self.hourly = list(hourly) if hourly else None
+
+    def level_at(self, hour: float) -> float:
+        if self.hourly is None:
+            return demand_at_hour(hour)
+        h = hour % 24.0
+        i = int(h) % 24
+        j = (i + 1) % 24
+        frac = h - int(h)
+        return self.hourly[i] + (self.hourly[j] - self.hourly[i]) * frac
+
+    def samples(self, n: int = 288):
+        if self.hourly is None:
+            return demand_curve_samples(n)
+        hours = np.linspace(0, 24, n)
+        return hours, [self.level_at(float(h)) for h in hours]
