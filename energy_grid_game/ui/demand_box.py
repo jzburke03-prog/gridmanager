@@ -205,18 +205,18 @@ class DemandBox:
         left_poly += [wave_pts[i] for i in range(n - 1, m - 1, -1)]
         pygame.draw.polygon(water_surf, _tinted(WATER_LEFT, tint_rgb), left_poly)
 
-        # Top surface cap: its far corner is interpolated from the near corner
-        # (fill=0, cap collapses to nothing) toward the true back corner
-        # (fill=1, cap matches the rim exactly). This is required — a flat
-        # horizontal diamond's PROJECTED SIZE in isometric view is independent
-        # of its height, only its vertical position shifts. Using the fixed
-        # back corner at any depth always draws a full footprint-sized cap,
-        # which makes a nearly-empty tank look half-full. Scaling the cap's
-        # own extent with fill% is what makes shallow water look shallow.
-        clamped_fill = max(0.0, min(1.0, fill_pct))
-        back_x = hw + (-hw - hw) * clamped_fill
-        back_y = hd + (-hd - hd) * clamped_fill
-        back_pt = _iso(back_x, back_y, water_h, (ox, oy))
+        # Top surface cap: a flat horizontal diamond at height water_h. In
+        # isometric projection a horizontal plane keeps its FULL footprint size
+        # at any height — only its vertical screen position shifts — so all four
+        # corners are the true footprint corners. The three visible ones
+        # (right -> near -> left) already carry the wave heightfield in
+        # wave_pts; the hidden far corner is the fixed back corner, flat at
+        # water_h. (An earlier version scaled this corner in toward the near
+        # corner by fill%, trying to make a shallow tank "look shallow" — but
+        # that collapsed the surface into a downward-pointing triangle instead
+        # of a diamond. The side faces already convey depth on their own: a low
+        # water_h shows only a thin band of water on them.)
+        back_pt = _iso(-hw, -hd, water_h, (ox, oy))
         top_poly = [back_pt] + wave_pts
         pygame.draw.polygon(water_surf, _tinted(WATER_TOP, tint_rgb), top_poly)
 
@@ -232,10 +232,9 @@ class DemandBox:
                      _iso(hw, hd, deep_h, (ox, oy)), _iso(hw, -hd, deep_h, (ox, oy))]
         pygame.draw.polygon(deco_surf, _tinted(WATER_DEEP, tint_rgb), deep_poly)
 
-        # caustic shimmer: two shrunken diamond rings drifting on the surface,
-        # additionally scaled by fill% for the same reason as the top cap above
+        # caustic shimmer: two shrunken diamond rings drifting on the now
+        # full-footprint surface
         for ring_i, f in enumerate((0.62, 0.34)):
-            f *= clamped_fill
             ring = []
             for k, (cx, cy) in enumerate([(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)]):
                 wob = 2.5 * math.sin(self.t * 1.7 + ring_i * 2.1 + k * 1.6)

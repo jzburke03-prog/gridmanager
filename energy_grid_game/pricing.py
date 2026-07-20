@@ -36,6 +36,15 @@ HYDRO_PRICE_PER_MWH = 8.0
 GAS_BASE_PRICE_PER_MWH = 28.0    # efficient combined-cycle, off-peak/typical load
 GAS_PEAK_PRICE_PER_MWH = 145.0   # simple-cycle peakers dispatched + gas spot spikes
 
+# Dedicated simple-cycle peaker turbines (Gas CT) are now a separate plant from
+# the efficient combined-cycle fleet. They are the priciest dispatchable MW on
+# the grid: a much worse heat rate (~11,000+ Btu/kWh) makes them expensive even
+# off-peak, and they run precisely when gas spot prices are spiking, so their
+# cost climbs steeply toward peak demand. In real markets peaker energy runs
+# $150-250/MWh in normal peaks and multiples of that during scarcity events.
+PEAKER_BASE_PRICE_PER_MWH = 95.0    # inefficient simple-cycle, even at low load
+PEAKER_PEAK_PRICE_PER_MWH = 240.0   # worst heat rate + gas spot spikes at peak
+
 # Extreme-demand events (e.g. a heat wave) mirror real scarcity pricing during
 # events like Winter Storm Elliott (Dec 2022), when Southeast wholesale gas
 # and power prices spiked far above normal.
@@ -49,6 +58,18 @@ def gas_price(demand_level: float, scarcity: bool = False) -> float:
     t = max(0.0, min(1.0, (demand_level - 0.5) / 0.5))
     curve = t ** 2.2
     price = GAS_BASE_PRICE_PER_MWH + (GAS_PEAK_PRICE_PER_MWH - GAS_BASE_PRICE_PER_MWH) * curve
+    if scarcity:
+        price *= EVENT_SCARCITY_MULTIPLIER
+    return price
+
+
+def peaker_price(demand_level: float, scarcity: bool = False) -> float:
+    """Simple-cycle gas peaker price. Unlike combined-cycle, it's expensive at
+    every demand level (inefficient turbines) and climbs from the start toward
+    a steep peak, rather than staying flat until demand passes ~50%."""
+    t = max(0.0, min(1.0, demand_level))
+    curve = t ** 1.7
+    price = PEAKER_BASE_PRICE_PER_MWH + (PEAKER_PEAK_PRICE_PER_MWH - PEAKER_BASE_PRICE_PER_MWH) * curve
     if scarcity:
         price *= EVENT_SCARCITY_MULTIPLIER
     return price

@@ -99,6 +99,14 @@ class HUD:
         clock_txt = self.font_big.render(state.clock_string(), True, TEXT)
         surface.blit(clock_txt, (24, 20))
 
+        # date + season stacked just right of the clock (left column stays free
+        # for the event banner). The date advances one day per in-game day.
+        date_txt = self.font_small.render(state.date_string(), True, TEXT)
+        season_txt = self.font_small.render(state.season_string().upper(), True, DIM)
+        dx = 24 + clock_txt.get_width() + 14
+        surface.blit(date_txt, (dx, 21))
+        surface.blit(season_txt, (dx, 21 + date_txt.get_height() + 1))
+
         score_label = self.font_small.render("SCORE", True, DIM)
         score_txt = self.font_big.render(f"{int(state.score):,}", True, TEXT)
         surface.blit(score_label, (w - score_label.get_width() - 24, 18))
@@ -309,7 +317,7 @@ class HUD:
         best_txt = self.font.render(f"BEST {int(state.high_score):,}", True, best_color)
         surface.blit(best_txt, (w // 2 - best_txt.get_width() // 2, h // 2 + 20 + score_txt.get_height()))
 
-        hint = self.font.render("Press R to restart  ·  ESC to quit", True, DIM)
+        hint = self.font.render("Press R to retry  ·  ESC for menu", True, DIM)
         surface.blit(hint, (w // 2 - hint.get_width() // 2, h // 2 + 70 + score_txt.get_height()))
 
     def _draw_vignette(self, surface, palette, severity=0.3):
