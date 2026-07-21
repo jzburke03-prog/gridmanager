@@ -18,21 +18,30 @@ import pygame
 # energy_grid_game/ui/portraits.py -> repo root -> assets/mentor
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets" / "mentor"
 
-# Portrait roles. Note there is no sad/disappointed artwork in the repo: failure
-# uses ANGRY, success uses HAPPY, narration uses the two explaining poses.
+# Portrait roles. The mentor pack ships six aligned expressions on one shared
+# canvas; failure uses ANGRY, success uses HAPPY.
 NEUTRAL = "neutral"
 POINTING = "pointing"
 HAPPY = "happy"
 ANGRY = "angry"
+TALKING = "talking"
+EXPLAINING = "explaining"
 CHATBOX = "chatbox"
 
 _FILES = {
-    NEUTRAL: "Gattie_Explaining_Talking.png",
-    POINTING: "Gattie_Explaining_Pointing.png",
-    HAPPY: "Gattie_GoodJob_Portrait.png",
-    ANGRY: "Gattie_Angry_Portait.png",
+    NEUTRAL: "mentor_neutral.png",
+    POINTING: "mentor_instruction_point.png",
+    HAPPY: "mentor_success_thumbsup.png",
+    ANGRY: "mentor_game_over_angry.png",
+    TALKING: "mentor_talking_alert.png",
+    EXPLAINING: "mentor_explaining.png",
     CHATBOX: "chatbox.png",
 }
+
+# These six share one aligned canvas by design, so they are NOT cropped to their
+# own content — that would shift the operator between expressions. They keep the
+# full canvas so every expression scales and positions identically.
+_ALIGNED = {NEUTRAL, POINTING, HAPPY, ANGRY, TALKING, EXPLAINING}
 
 # chatbox.png nine-slice: the frame's border is 43-48px thick in the source art,
 # so 48 is the smallest corner that captures a whole corner ornament.
@@ -69,7 +78,9 @@ def load(key: str) -> pygame.Surface:
             f"{path.name} has no alpha channel. Mentor art must be transparent "
             f"RGBA; run: python tools/fix_portrait_mattes.py"
         )
-    surface = _crop_to_content(surface.convert_alpha())
+    surface = surface.convert_alpha()
+    if key not in _ALIGNED:   # keep the aligned mentor set on its shared canvas
+        surface = _crop_to_content(surface)
     _raw_cache[key] = surface
     return surface
 

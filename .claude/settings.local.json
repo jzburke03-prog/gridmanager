@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c ' *)",
+      "Bash(.venv39/Scripts/python.exe \"C:\\\\Users\\\\sycho\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-sycho-Downloads-gridmanager-eia-scenarios-dials\\\\21423806-498f-4926-850d-73ce446b0b6c\\\\scratchpad\\\\moments_menu.py\")"
+    ]
+  }
+}

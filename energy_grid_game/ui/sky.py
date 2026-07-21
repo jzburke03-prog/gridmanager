@@ -19,6 +19,9 @@ CLOUD_COLOR = (130, 140, 160)
 RAIN_COLOR = (150, 180, 220)
 WIND_STREAK_COLOR = (220, 225, 235)
 HEAT_RING_COLOR = (255, 140, 90)
+SNOW_COLOR = (235, 240, 250)
+ICE_COLOR = (180, 220, 255)
+ICE_TINT = (190, 220, 255, 28)   # full-frame blue-white freeze wash
 
 DAY_START, DAY_END = 5.0, 20.0     # sunrise / sunset, mirrors solar_availability
 NIGHT_SPAN = 24.0 - (DAY_END - DAY_START)  # 9 hours
@@ -75,6 +78,51 @@ class RainDrop:
             self.x = random.uniform(rect.left, rect.right)
 
 
+class Snowflake:
+    """Slow-falling flake with a sinusoidal side-to-side drift."""
+
+    def __init__(self, rect):
+        self.reset(rect, randomize_y=True)
+
+    def reset(self, rect, randomize_y=False):
+        self.x = random.uniform(rect.left, rect.right)
+        self.y = random.uniform(rect.top, rect.bottom) if randomize_y else rect.top - 4
+        self.speed = random.uniform(30, 70)
+        self.radius = random.randint(1, 3)
+        self.sway_phase = random.uniform(0.0, math.tau)
+        self.sway_freq = random.uniform(0.6, 1.4)
+        self.sway_amp = random.uniform(3, 9)
+
+    def update(self, dt, rect):
+        self.y += self.speed * dt
+        if self.y > rect.bottom:
+            self.reset(rect)
+
+    def draw(self, surface, t):
+        x = self.x + math.sin(t * self.sway_freq + self.sway_phase) * self.sway_amp
+        pygame.draw.circle(surface, SNOW_COLOR, (int(x), int(self.y)), self.radius)
+
+
+class IceShard:
+    """Sleet: faster than snow, slower than rain, with a hard wind slant."""
+
+    def __init__(self, rect):
+        self.reset(rect, randomize_y=True)
+
+    def reset(self, rect, randomize_y=False):
+        self.x = random.uniform(rect.left, rect.right)
+        self.y = random.uniform(rect.top, rect.bottom) if randomize_y else rect.top - 14
+        self.speed = random.uniform(250, 380)
+        self.length = random.uniform(8, 14)
+
+    def update(self, dt, rect):
+        self.y += self.speed * dt
+        self.x -= self.speed * 0.3 * dt
+        if self.y > rect.bottom:
+            self.y = rect.top - self.length
+            self.x = random.uniform(rect.left, rect.right)
+
+
 class WindStreak:
     def __init__(self, rect):
         self.reset(rect, randomize_x=True)
@@ -97,6 +145,9 @@ class SkyLayer:
         self._clouds = None
         self._raindrops = None
         self._streaks = None
+        self._snow = None
+        self._shards = None
+        self._ice_tint = None
         self._gradient = SkyGradient()
 
     def draw(self, surface, rect, sim_hour, active_event):
@@ -121,6 +172,12 @@ class SkyLayer:
             self._draw_clouds(surface, rect, alpha=90 if kind == "RAIN" else 150)
         if kind == "RAIN":
             self._draw_rain(surface, rect)
+        if kind == "SNOW":
+            self._draw_clouds(surface, rect, alpha=120)
+            self._draw_snow(surface, rect)
+        if kind == "ICE_STORM":
+            self._draw_clouds(surface, rect, alpha=140)
+            self._draw_ice(surface, rect)
         if kind == "WIND_GUST":
             self._draw_wind_streaks(surface, rect)
         if kind == "HEAT_WAVE":
@@ -163,6 +220,28 @@ class SkyLayer:
         for s in self._streaks:
             s.update(1 / 60.0, band)
             pygame.draw.line(surface, WIND_STREAK_COLOR, (s.x - s.length, s.y), (s.x, s.y), 2)
+
+    def _draw_snow(self, surface, rect, limit=None):
+        if self._snow is None:
+            self._snow = [Snowflake(rect) for _ in range(120)]
+        for f in (self._snow if limit is None else self._snow[:limit]):
+            f.update(1 / 60.0, rect)
+            f.draw(surface, self._t)
+
+    def _draw_ice(self, surface, rect):
+        # cold blue-white wash over the whole sky, then wind-slanted sleet
+        # with a scattering of slow flakes riding along
+        if self._ice_tint is None or self._ice_tint.get_size() != rect.size:
+            self._ice_tint = pygame.Surface(rect.size, pygame.SRCALPHA)
+            self._ice_tint.fill(ICE_TINT)
+        surface.blit(self._ice_tint, rect.topleft)
+        if self._shards is None:
+            self._shards = [IceShard(rect) for _ in range(70)]
+        for s in self._shards:
+            s.update(1 / 60.0, rect)
+            pygame.draw.line(surface, ICE_COLOR, (s.x, s.y),
+                             (s.x - s.length * 0.3, s.y - s.length), 1)
+        self._draw_snow(surface, rect, limit=40)
 
     def _draw_heat_pulses(self, surface, origin):
         x, y = origin

@@ -1,0 +1,1090 @@
+{
+  "format": "RGBA PNG",
+  "style": "true 8-bit pixel art",
+  "scale": 4,
+  "asset_count": 80,
+  "assets": [
+    {
+      "file": "buttons/pause_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/pause_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/pause_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/resume_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/resume_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/resume_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/settings_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/settings_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/settings_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/save_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/save_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/save_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/load_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/load_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/load_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/back_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/back_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/back_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/confirm_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/confirm_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/confirm_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/cancel_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/cancel_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/cancel_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/sound_on_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/sound_on_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/sound_on_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/sound_off_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/sound_off_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/sound_off_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/music_on_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/music_on_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/music_on_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "buttons/music_off_button_idle.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "idle"
+    },
+    {
+      "file": "buttons/music_off_button_hover.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "hover"
+    },
+    {
+      "file": "buttons/music_off_button_pressed.png",
+      "native_size": [
+        32,
+        16
+      ],
+      "export_size": [
+        128,
+        64
+      ],
+      "transparent": true,
+      "category": "button",
+      "state": "pressed"
+    },
+    {
+      "file": "navigation/arrow_left.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "navigation"
+    },
+    {
+      "file": "navigation/arrow_right.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "navigation"
+    },
+    {
+      "file": "navigation/arrow_up.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "navigation"
+    },
+    {
+      "file": "navigation/arrow_down.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "navigation"
+    },
+    {
+      "file": "hud_icons/warning_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "hud_icon"
+    },
+    {
+      "file": "hud_icons/info_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "hud_icon"
+    },
+    {
+      "file": "hud_icons/lock_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "hud_icon"
+    },
+    {
+      "file": "hud_icons/unlock_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "hud_icon"
+    },
+    {
+      "file": "hud_icons/notification_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "hud_icon"
+    },
+    {
+      "file": "hud_icons/maintenance_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "hud_icon"
+    },
+    {
+      "file": "resource_icons/energy_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/money_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/population_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/environment_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/coal_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/gas_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/nuclear_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/wind_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/hydro_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "resource_icons/solar_icon.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "resource_icon"
+    },
+    {
+      "file": "panels/tooltip_panel.png",
+      "native_size": [
+        64,
+        32
+      ],
+      "export_size": [
+        256,
+        128
+      ],
+      "transparent": true,
+      "category": "panel"
+    },
+    {
+      "file": "panels/dialogue_panel.png",
+      "native_size": [
+        96,
+        32
+      ],
+      "export_size": [
+        384,
+        128
+      ],
+      "transparent": true,
+      "category": "panel"
+    },
+    {
+      "file": "panels/notification_banner.png",
+      "native_size": [
+        96,
+        16
+      ],
+      "export_size": [
+        384,
+        64
+      ],
+      "transparent": true,
+      "category": "panel"
+    },
+    {
+      "file": "progress/progress_bar_empty.png",
+      "native_size": [
+        64,
+        12
+      ],
+      "export_size": [
+        256,
+        48
+      ],
+      "transparent": true,
+      "category": "progress"
+    },
+    {
+      "file": "progress/progress_bar_25.png",
+      "native_size": [
+        64,
+        12
+      ],
+      "export_size": [
+        256,
+        48
+      ],
+      "transparent": true,
+      "category": "progress",
+      "percent": 25
+    },
+    {
+      "file": "progress/progress_bar_50.png",
+      "native_size": [
+        64,
+        12
+      ],
+      "export_size": [
+        256,
+        48
+      ],
+      "transparent": true,
+      "category": "progress",
+      "percent": 50
+    },
+    {
+      "file": "progress/progress_bar_75.png",
+      "native_size": [
+        64,
+        12
+      ],
+      "export_size": [
+        256,
+        48
+      ],
+      "transparent": true,
+      "category": "progress",
+      "percent": 75
+    },
+    {
+      "file": "progress/progress_bar_100.png",
+      "native_size": [
+        64,
+        12
+      ],
+      "export_size": [
+        256,
+        48
+      ],
+      "transparent": true,
+      "category": "progress",
+      "percent": 100
+    },
+    {
+      "file": "tabs/scenario_tab_active.png",
+      "native_size": [
+        48,
+        16
+      ],
+      "export_size": [
+        192,
+        64
+      ],
+      "transparent": true,
+      "category": "tab",
+      "active": true
+    },
+    {
+      "file": "tabs/scenario_tab_inactive.png",
+      "native_size": [
+        48,
+        16
+      ],
+      "export_size": [
+        192,
+        64
+      ],
+      "transparent": true,
+      "category": "tab",
+      "active": false
+    },
+    {
+      "file": "selection/selection_highlight.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "selection"
+    },
+    {
+      "file": "selection/selection_cursor.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "selection"
+    },
+    {
+      "file": "ratings/star_full.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "rating"
+    },
+    {
+      "file": "ratings/star_empty.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "rating"
+    },
+    {
+      "file": "calendar/calendar_prev_button.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "calendar"
+    },
+    {
+      "file": "calendar/calendar_next_button.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "calendar"
+    },
+    {
+      "file": "calendar/calendar_today_button.png",
+      "native_size": [
+        24,
+        16
+      ],
+      "export_size": [
+        96,
+        64
+      ],
+      "transparent": true,
+      "category": "calendar"
+    },
+    {
+      "file": "calendar/day_tile.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "calendar"
+    },
+    {
+      "file": "calendar/day_tile_selected.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "calendar"
+    },
+    {
+      "file": "calendar/day_tile_disabled.png",
+      "native_size": [
+        16,
+        16
+      ],
+      "export_size": [
+        64,
+        64
+      ],
+      "transparent": true,
+      "category": "calendar"
+    },
+    {
+      "file": "scenario_cards/blackout_scenario_card.png",
+      "native_size": [
+        48,
+        64
+      ],
+      "export_size": [
+        192,
+        256
+      ],
+      "transparent": true,
+      "category": "scenario_card"
+    },
+    {
+      "file": "scenario_cards/heatwave_scenario_card.png",
+      "native_size": [
+        48,
+        64
+      ],
+      "export_size": [
+        192,
+        256
+      ],
+      "transparent": true,
+      "category": "scenario_card"
+    },
+    {
+      "file": "scenario_cards/fuel_shortage_scenario_card.png",
+      "native_size": [
+        48,
+        64
+      ],
+      "export_size": [
+        192,
+        256
+      ],
+      "transparent": true,
+      "category": "scenario_card"
+    },
+    {
+      "file": "scenario_cards/renewable_transition_scenario_card.png",
+      "native_size": [
+        48,
+        64
+      ],
+      "export_size": [
+        192,
+        256
+      ],
+      "transparent": true,
+      "category": "scenario_card"
+    }
+  ]
+}

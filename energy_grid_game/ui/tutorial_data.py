@@ -41,11 +41,11 @@ CONDITIONS = {
 STEPS = [
     {
         "id": "intro",
-        "portrait": portraits.NEUTRAL,
+        "portrait": portraits.EXPLAINING,
         "speaker": SPEAKER,
         "lines": [
-            "04:00. The city's asleep. The grid isn't.",
-            "I'm Gattie. Two minutes and you're running it.",
+            "0400 hours. Whole city's asleep. The grid never gets to be.",
+            "Name's Gattie. Thirty years on this desk. Couple minutes, it's yours.",
         ],
     },
     {
@@ -54,8 +54,9 @@ STEPS = [
         "speaker": SPEAKER,
         "highlight": "supply_demand",
         "lines": [
-            "SUPPLY on the left, DEMAND on the right.",
-            "Matching those two is the whole job.",
+            "SUPPLY is what we're making. DEMAND is what the city's pulling.",
+            "Those two have to match. Every second.",
+            "You can't store this stuff. You make it, the city burns it, right now.",
         ],
     },
     {
@@ -64,8 +65,9 @@ STEPS = [
         "speaker": SPEAKER,
         "highlight": "tank",
         "lines": [
-            "The tank shows the same ratio, in water.",
-            "Green rim is good. Empty blacks out, overfull melts down.",
+            "That tank is the same balance, in water. Level holds when supply meets demand.",
+            "Let it run dry and the city browns out.",
+            "Overfill it and you're cooking the hardware. Keep the rim green.",
         ],
     },
     {
@@ -75,17 +77,18 @@ STEPS = [
         "highlight": "gas_card",
         "wait_for": "supply_raised",
         "lines": [
-            "You're short right now. Fix it.",
-            "Drag a plant's white handle up. Natural Gas responds fastest.",
+            "Right now we're short. Demand's climbing and we're behind it.",
+            "Grab a plant's handle and pull it up.",
+            "Reach for gas first. It ramps in seconds. Nuclear and coal take their time.",
         ],
-        "action_hint": "Drag a handle upward",
+        "action_hint": "Pull a plant's handle up",
         "success": {
             "portrait": portraits.HAPPY,
-            "text": "That's it — watch the supply climb.",
+            "text": "There it is. Watch the supply climb to meet the load.",
         },
         "correction": {
-            "portrait": portraits.ANGRY,
-            "text": "Not there. The handles are on the plant cards.",
+            "portrait": portraits.TALKING,
+            "text": "Not there. The handles are on the plant cards up top.",
         },
     },
     {
@@ -95,17 +98,17 @@ STEPS = [
         "highlight": "supply_demand",
         "wait_for": "balanced",
         "lines": [
-            "Now land it. Get supply within 10% of demand.",
-            "The big number turns green and reads BALANCED.",
+            "Now feather it in. Get supply inside ten percent of demand.",
+            "Overshoot, ease it back. When it settles, the number goes green: BALANCED.",
         ],
-        "action_hint": "Bring the ratio to 90-110%",
+        "action_hint": "Land supply within 10% of demand",
         "success": {
             "portrait": portraits.HAPPY,
-            "text": "Balanced. Every home on the grid is lit.",
+            "text": "Balanced. Frequency's steady, every home's lit. That's the job.",
         },
         "correction": {
-            "portrait": portraits.ANGRY,
-            "text": "Use the sliders. Watch the big number as you drag.",
+            "portrait": portraits.TALKING,
+            "text": "Work the handles slow. Watch the big number, not the plants.",
         },
     },
     {
@@ -114,7 +117,8 @@ STEPS = [
         "speaker": SPEAKER,
         "highlight": "speed_control",
         "lines": [
-            "Clock controls. SPACE pauses, R restarts.",
+            "Clock's down here. Run it fast when it's quiet, slow when it's hairy.",
+            "SPACE stops the clock. R starts the day over.",
         ],
     },
     {
@@ -122,8 +126,9 @@ STEPS = [
         "portrait": portraits.NEUTRAL,
         "speaker": SPEAKER,
         "lines": [
-            "Demand climbs 'til evening, then spikes again at 8.",
-            "Keep them matched. She's your grid now.",
+            "Load climbs all morning as the city wakes.",
+            "It peaks in the evening. Everyone home, every AC running.",
+            "Stay ahead of it. She's your grid now. Don't let the lights go out.",
         ],
     },
 ]

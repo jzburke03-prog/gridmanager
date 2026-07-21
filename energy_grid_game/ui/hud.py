@@ -3,8 +3,15 @@ import math
 import pygame
 
 from game_state import SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD, MAX_FILL_PCT
-from ui import portraits
+from ui import assets, portraits
 from ui.gradient_border import AMBER, RED, GradientBorder
+
+# event kind -> hud_icons/<name>_icon.png shown on the alert banner
+EVENT_ICON = {
+    "HEAT_WAVE": "warning", "ICE_STORM": "warning", "MAINTENANCE": "maintenance",
+    "CLOUD_COVER": "notification", "WIND_GUST": "notification",
+    "RAIN": "notification", "SNOW": "notification",
+}
 
 TEXT = (225, 230, 240)
 DIM = (150, 158, 176)
@@ -75,6 +82,14 @@ class HUD:
         self._border = GradientBorder()
         self._scrim = None
         self._scrim_key = None
+        self.audio_rect = None    # click target for the sound toggle, set in draw
+        # Not every matched monospace font ships the degree glyph; drop it
+        # rather than rendering a missing-glyph box next to the temperature.
+        try:
+            m = self.font_small.metrics("°")
+            self._degree_ok = bool(m and m[0])
+        except Exception:
+            self._degree_ok = False
 
     def _top_scrim(self, width, band_h):
         """Cached legibility gradient behind the top HUD band. Built one pixel
@@ -99,6 +114,30 @@ class HUD:
         clock_txt = self.font_big.render(state.clock_string(), True, TEXT)
         surface.blit(clock_txt, (24, 20))
 
+        # date + season stacked just right of the clock (left column stays free
+        # for the event banner). The date advances one day per in-game day.
+        date_txt = self.font_small.render(state.date_string(), True, TEXT)
+        season_txt = self.font_small.render(state.season_string().upper(), True, DIM)
+        dx = 24 + clock_txt.get_width() + 14
+        surface.blit(date_txt, (dx, 21))
+        surface.blit(season_txt, (dx, 21 + date_txt.get_height() + 1))
+
+        # ambient temperature beside the season: blue in a freeze, red in a
+        # scorcher, so severe-weather events read at a glance
+        temp_color = ((120, 190, 255) if state.temp_f < 32.0
+                      else (240, 110, 90) if state.temp_f > 90.0 else DIM)
+        deg = "°F" if self._degree_ok else "F"
+        temp_txt = self.font_small.render(f"{state.temp_f:0.0f}{deg}", True, temp_color)
+        surface.blit(temp_txt, (dx + season_txt.get_width() + 10,
+                                21 + date_txt.get_height() + 1))
+
+        # Region/scenario run that fell back to synthetic curves: keep the
+        # status visible after the launch flash message has faded.
+        if state.config.mode != "standard" and state.config.data_source == "synthetic":
+            synth_txt = self.font_small.render("SYNTHETIC DATA", True, (240, 200, 90))
+            surface.blit(synth_txt, (dx, 21 + date_txt.get_height()
+                                     + season_txt.get_height() + 2))
+
         score_label = self.font_small.render("SCORE", True, DIM)
         score_txt = self.font_big.render(f"{int(state.score):,}", True, TEXT)
         surface.blit(score_label, (w - score_label.get_width() - 24, 18))
@@ -120,7 +159,11 @@ class HUD:
         spent_txt = self.font.render(_format_money(state.total_cost), True, (240, 200, 90))
         spent_y = 18 + score_label.get_height() + score_txt.get_height() + delta_txt.get_height() + hs_txt.get_height() + 14
         surface.blit(spent_label, (w - spent_label.get_width() - 24, spent_y))
-        surface.blit(spent_txt, (w - spent_txt.get_width() - 24, spent_y + spent_label.get_height() + 1))
+        spent_val_y = spent_y + spent_label.get_height() + 1
+        money_icon = assets.resource_icon("money", 16)
+        surface.blit(spent_txt, (w - spent_txt.get_width() - 24, spent_val_y))
+        surface.blit(money_icon, (w - spent_txt.get_width() - 24 - money_icon.get_width() - 5,
+                                  spent_val_y + (spent_txt.get_height() - 16) // 2))
 
         # --- supply/demand fulfillment: the big top-center number now answers
         # "am I meeting demand right now", not the tank's slow-accumulating
@@ -153,7 +196,10 @@ class HUD:
         gap = 14
         block_w = supply_val.get_width() + sep.get_width() + demand_val.get_width() + gap * 2
         bx = w // 2 - block_w // 2
+        energy_icon = assets.resource_icon("energy", 14)
         supply_lbl_x = bx + supply_val.get_width() // 2 - supply_lbl.get_width() // 2
+        surface.blit(energy_icon, (supply_lbl_x - energy_icon.get_width() - 3,
+                                   y + (supply_lbl.get_height() - 14) // 2))
         surface.blit(supply_lbl, (supply_lbl_x, y))
         surface.blit(supply_val, (bx, y + supply_lbl.get_height() + 1))
         sep_x = bx + supply_val.get_width() + gap
@@ -184,18 +230,20 @@ class HUD:
         # `y` is a running cursor, so both removals close up automatically and
         # everything below simply moves up.
 
-        # active grid event banner with live countdown
+        # active grid event banner (pixel-art banner + kind icon + countdown)
         if state.active_event:
             ev = state.active_event
-            banner = self.font.render(f"{ev.name}  ({ev.remaining:0.0f}s)", True, (255, 200, 90))
-            pad = 10
-            bw, bh = banner.get_width() + pad * 2, banner.get_height() + pad
-            banner_bg = pygame.Surface((bw, bh), pygame.SRCALPHA)
-            pulse = int(150 + 60 * abs(math.sin(self._t * 3)))
-            pygame.draw.rect(banner_bg, (60, 45, 15, pulse), banner_bg.get_rect(), border_radius=6)
-            pygame.draw.rect(banner_bg, (255, 200, 90, 200), banner_bg.get_rect(), width=1, border_radius=6)
-            banner_bg.blit(banner, (pad, pad // 2))
-            surface.blit(banner_bg, (24, 20 + clock_txt.get_height() + 8))
+            text = self.font.render(f"{ev.name}  ({ev.remaining:0.0f}s)", True, (255, 236, 224))
+            icon = assets.hud_icon(EVENT_ICON.get(ev.kind, "notification"), 16)
+            tri_zone = 34                 # left cap holds the banner's baked triangle
+            bh = 32
+            content = tri_zone + icon.get_width() + 6 + text.get_width() + 14
+            bw = (content + 7) // 8 * 8    # quantize width so the countdown reuses the cache
+            banner = assets.h_slice("panels/notification_banner.png", bw, bh, 16).copy()
+            banner.blit(icon, (tri_zone, (bh - icon.get_height()) // 2))
+            banner.blit(text, (tri_zone + icon.get_width() + 6, (bh - text.get_height()) // 2))
+            banner.set_alpha(int(190 + 60 * abs(math.sin(self._t * 3))))
+            surface.blit(banner, (24, 20 + clock_txt.get_height() + 8))
 
         flash_y = y
         for text, ttl in state.flash_messages:
@@ -218,31 +266,36 @@ class HUD:
         if fill_pct < SEVERE_LOW_THRESHOLD:
             severity = (SEVERE_LOW_THRESHOLD - max(0.0, fill_pct)) / SEVERE_LOW_THRESHOLD
             self._draw_vignette(surface, RED, severity)
-            label = "☠ CATASTROPHIC BLACKOUT" if severity > 0.7 else "⚠ BLACKOUT RISK"
+            label = "CATASTROPHIC BLACKOUT" if severity > 0.7 else "BLACKOUT RISK"
             self._draw_warning(surface, label, (255, 120, 120), y, severity)
         elif fill_pct > SEVERE_HIGH_THRESHOLD:
             span = MAX_FILL_PCT - SEVERE_HIGH_THRESHOLD
             severity = min(1.0, (fill_pct - SEVERE_HIGH_THRESHOLD) / max(0.01, span))
             self._draw_vignette(surface, AMBER, severity)
-            label = "☠ GRID MELTDOWN IMMINENT" if severity > 0.6 else "⚠ CRITICAL OVERLOAD"
+            label = "GRID MELTDOWN IMMINENT" if severity > 0.6 else "CRITICAL OVERLOAD"
             self._draw_warning(surface, label, (255, 190, 110), y, severity)
         elif state.blackout:
             self._draw_vignette(surface, RED, 0.3)
-            self._draw_warning(surface, "⚠ BLACKOUT RISK", (255, 120, 120), y, 0.3)
+            self._draw_warning(surface, "BLACKOUT RISK", (255, 120, 120), y, 0.3)
 
         if state.celebrate_high_score > 0:
             self._draw_success_toast(surface)
 
     def draw_audio_indicator(self, surface, audio, pos):
-        """Small muted/unmuted readout. Sits with the other always-on controls."""
-        if audio.available:
-            label = "AUDIO MUTED (M)" if audio.muted else "AUDIO ON (M)"
-            color = (240, 200, 90) if audio.muted else DIM
-        else:
-            label = "NO AUDIO DEVICE"
-            color = (110, 116, 130)
-        txt = self.font_small.render(label, True, color)
-        surface.blit(txt, pos)
+        """Clickable sound toggle (pixel button) + '(M)' hotkey hint. When no
+        audio device is present it degrades to the old dim text."""
+        self.audio_rect = None
+        if not audio.available:
+            txt = self.font_small.render("NO AUDIO DEVICE", True, (110, 116, 130))
+            surface.blit(txt, pos)
+            return
+        btn = assets.scaled_to_height(
+            f"buttons/sound_{'off' if audio.muted else 'on'}_button_idle.png", 32)
+        surface.blit(btn, pos)
+        self.audio_rect = pygame.Rect(pos, btn.get_size())
+        hint = self.font_small.render("(M)", True, DIM)
+        surface.blit(hint, (pos[0] + btn.get_width() + 6,
+                            pos[1] + (btn.get_height() - hint.get_height()) // 2))
 
     def _draw_success_toast(self, surface):
         """Thumbs-up beside the game's existing new-personal-best event. The
@@ -264,16 +317,20 @@ class HUD:
         surface.blit(plate_surf, plate.topleft)
 
     def _draw_warning(self, surface, text, color, y, severity):
-        # Slow, smooth brightness breathing — no positional jitter, and
-        # capped well under 1 Hz — since large warning text is exactly the
-        # kind of element that shouldn't be strobing.
+        # Warning icon + text, breathing together. Slow, smooth brightness —
+        # no positional jitter, capped well under 1 Hz — since large warning
+        # text is exactly the kind of element that shouldn't be strobing.
         w, _ = surface.get_size()
         warn = self.font_big.render(text, True, color)
-        alpha = int(170 + 85 * abs(math.sin(self._t * (1.2 + 0.8 * severity))))
-        ws = pygame.Surface(warn.get_size(), pygame.SRCALPHA)
-        ws.blit(warn, (0, 0))
-        ws.set_alpha(alpha)
-        surface.blit(ws, (w // 2 - warn.get_width() // 2, y))
+        icon = assets.hud_icon("warning", 32)
+        gap = 10
+        total_w = icon.get_width() + gap + warn.get_width()
+        row_h = max(icon.get_height(), warn.get_height())
+        ws = pygame.Surface((total_w, row_h), pygame.SRCALPHA)
+        ws.blit(icon, (0, (row_h - icon.get_height()) // 2))
+        ws.blit(warn, (icon.get_width() + gap, (row_h - warn.get_height()) // 2))
+        ws.set_alpha(int(170 + 85 * abs(math.sin(self._t * (1.2 + 0.8 * severity)))))
+        surface.blit(ws, (w // 2 - total_w // 2, y))
 
     def draw_game_over(self, surface, state):
         w, h = surface.get_size()
@@ -282,9 +339,9 @@ class HUD:
         surface.blit(dim, (0, 0))
 
         reason_labels = {
-            "TOTAL BLACKOUT": "☠ TOTAL BLACKOUT",
-            "GRID MELTDOWN": "☠ GRID MELTDOWN",
-            "NUCLEAR MELTDOWN": "☢ NUCLEAR MELTDOWN",
+            "TOTAL BLACKOUT": "TOTAL BLACKOUT",
+            "GRID MELTDOWN": "GRID MELTDOWN",
+            "NUCLEAR MELTDOWN": "NUCLEAR MELTDOWN",
         }
         # Gattie reacts to the failure. Bottom-anchored to the left of the
         # centered text block, clamped so a narrow window can't push him off.
@@ -294,9 +351,17 @@ class HUD:
         p_rect.centery = h // 2 - 10
         surface.blit(portrait, p_rect.topleft)
 
-        title = reason_labels.get(state.game_over_reason, "☠ GRID FAILURE")
+        title = reason_labels.get(state.game_over_reason, "GRID FAILURE")
         title_txt = self.font_mono_big.render(title, True, (255, 110, 100))
-        surface.blit(title_txt, (w // 2 - title_txt.get_width() // 2, h // 2 - 110))
+        # failure icon left of the title (nuclear gets the reactor icon)
+        if state.game_over_reason == "NUCLEAR MELTDOWN":
+            icon = assets.resource_icon("nuclear", 48)
+        else:
+            icon = assets.hud_icon("warning", 48)
+        block_w = icon.get_width() + 12 + title_txt.get_width()
+        bx = w // 2 - block_w // 2
+        surface.blit(icon, (bx, h // 2 - 110 + (title_txt.get_height() - icon.get_height()) // 2))
+        surface.blit(title_txt, (bx + icon.get_width() + 12, h // 2 - 110))
 
         explanation = FAILURE_EXPLANATIONS.get(state.game_over_reason, "The grid did not survive.")
         sub = self.font.render(explanation, True, DIM)
@@ -309,7 +374,7 @@ class HUD:
         best_txt = self.font.render(f"BEST {int(state.high_score):,}", True, best_color)
         surface.blit(best_txt, (w // 2 - best_txt.get_width() // 2, h // 2 + 20 + score_txt.get_height()))
 
-        hint = self.font.render("Press R to restart  ·  ESC to quit", True, DIM)
+        hint = self.font.render("Press R to retry  ·  ESC for menu", True, DIM)
         surface.blit(hint, (w // 2 - hint.get_width() // 2, h // 2 + 70 + score_txt.get_height()))
 
     def _draw_vignette(self, surface, palette, severity=0.3):

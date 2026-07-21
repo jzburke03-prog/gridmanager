@@ -18,6 +18,7 @@ from ui.hud import HUD
 from ui.sky import SkyLayer
 from ui.tutorial import TutorialManager
 from ui.day_panel import DayCompletePanel
+from ui.menu import MenuSystem
 from audio import AudioManager
 
 BG_COLOR = (13, 17, 23)
@@ -94,14 +95,17 @@ def main():
     font_bold = pygame.font.Font(mono_path, 16)
     font_big = pygame.font.Font(mono_path, 24)
     font_mono_big = pygame.font.Font(mono_path, 40)
+    font_title = pygame.font.Font(mono_path, 64)
 
-    state = GameState()
+    # No game exists until the menu produces a RunConfig; the UI widgets below
+    # are stateless w.r.t. which grid is loaded, so they're built once.
+    state = None
 
     spigot_rect, box_rect, chart_rect, city_rect = compute_layout(WINDOW_WIDTH, WINDOW_HEIGHT)
     spigot_panel = SpigotPanel(spigot_rect, font, font_small, font_bold)
     demand_box = DemandBox(center=(WINDOW_WIDTH // 2, box_rect.top + box_rect.height - 40))
     demand_chart = DemandChart(chart_rect, font_small)
-    city_grid = CityGrid(city_rect, font_small, font)
+    city_grid = CityGrid(font_small, font)
     speed_control = SpeedControl((24, 96), font_small, font)
     pipes = PipeSystem()
     hud = HUD(font, font_small, font_big, font_mono_big)
@@ -109,6 +113,37 @@ def main():
     tutorial = TutorialManager(font, font_small, font)
     day_panel = DayCompletePanel(font, font_small, font_big)
     audio = AudioManager()
+    menu = MenuSystem(font, font_small, font_big, font_title)
+    scene = "menu"   # "menu" | "game"
+
+    # Latched once the player finishes or skips the tutorial, so it doesn't
+    # replay every time a new Standard game starts this session.
+    tutorial_completed = False
+
+    def start_game(cfg, fresh_tutorial=True):
+        """Spin up a fresh session from a RunConfig chosen in the menu."""
+        nonlocal state, scene, tutorial, tutorial_completed
+        state = GameState(cfg)
+        day_panel.reset()
+        # Region/scenario runs are supposed to play on real EIA data; if the
+        # fetch fell back to the synthetic grid, say so instead of silently
+        # serving a 1000 MW stand-in for a 40 GW authority.
+        if cfg.mode != "standard" and cfg.data_source == "synthetic":
+            state.flash_messages.append(["LIVE DATA UNAVAILABLE — SYNTHETIC GRID", 6.0])
+        # The guided tutorial only runs on the Standard grid; region/scenario
+        # players already know the ropes, so close it out of their way. A fresh
+        # Standard game from the menu gets a brand-new tutorial (the manager is
+        # single-use by design) unless it was already finished this session;
+        # an R-key retry of the same grid never replays it.
+        if tutorial.finished:
+            tutorial_completed = True
+        if cfg.mode == "standard" and fresh_tutorial and not tutorial_completed:
+            tutorial = TutorialManager(font, font_small, font)
+        else:
+            tutorial.close_for_retry()
+        # feed the chart the actual demand shape for this run
+        demand_chart.demand_hours, demand_chart.demand_levels = state.demand_profile.samples(288)
+        scene = "game"
 
     # depth=24 forces NO alpha byte. pygame.Surface() defaults to 32-bit with
     # an alpha channel on this platform (even without SRCALPHA), and blitting
@@ -128,6 +163,8 @@ def main():
     while running:
         dt = clock.tick(FPS) / 1000.0
 
+        tutorial_on = scene == "game" and state is not None and state.config.mode == "standard"
+
         # Input priority: outcome screen > day panel > tutorial > gameplay. Once
         # a layer claims an event nothing below it sees that event at all.
         for event in pygame.event.get():
@@ -136,22 +173,33 @@ def main():
                 continue
 
             # Always-live keys, whatever is on screen.
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE:
-                    running = False
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                audio.toggle_mute()
+                continue
+
+            # ---- MENU scene ----
+            if scene == "menu":
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    # Esc steps one menu level back; only quits from the title.
+                    if not menu.go_back():
+                        running = False
                     continue
-                if event.key == pygame.K_m:
-                    audio.toggle_mute()
-                    continue
+                menu.handle_event(event)
+                continue
+
+            # ---- GAME scene ----
+            # Esc backs out to the menu rather than quitting the whole app.
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                scene = "menu"
+                menu.open_menu()
+                audio.unduck_music()
+                continue
 
             # 1. success/failure screen
             if state.game_over:
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                    # Retry: a fresh grid, but NOT a fresh tutorial. Completed
-                    # steps stay completed and the box does not reopen.
-                    state = GameState()
-                    tutorial.close_for_retry()
-                    day_panel.reset()
+                    # Retry the SAME grid (same region/date/difficulty).
+                    start_game(state.config, fresh_tutorial=False)
                     audio.unduck_music()
                 continue  # nothing else reaches the grid behind the overlay
 
@@ -159,8 +207,8 @@ def main():
             if day_panel.handle_event(event, audio):
                 continue
 
-            # 3. tutorial / dialogue
-            if tutorial.handle_event(event, audio):
+            # 3. tutorial / dialogue (Standard grid only)
+            if tutorial_on and tutorial.handle_event(event, audio):
                 continue
 
             # 4/5. normal gameplay
@@ -172,7 +220,9 @@ def main():
                 elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
                     state.speed_down()
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if speed_control.handle_mouse_down(event.pos, state):
+                if hud.audio_rect and hud.audio_rect.collidepoint(event.pos):
+                    audio.toggle_mute()
+                elif speed_control.handle_mouse_down(event.pos, state):
                     audio.play("ui_click")
                 else:
                     spigot_panel.handle_mouse_down(event.pos, state.sources)
@@ -181,10 +231,24 @@ def main():
             elif event.type == pygame.MOUSEMOTION:
                 spigot_panel.handle_mouse_motion(event.pos, state.sources)
 
+        # ---- MENU scene: update, maybe launch a game, draw, present ----
+        if scene == "menu":
+            menu.update(dt)
+            cfg = menu.take_config()
+            if cfg is not None:
+                start_game(cfg)
+            else:
+                menu.draw(frame)
+                screen.fill(BG_COLOR)
+                screen.blit(frame, (0, 0))
+                pygame.display.flip()
+                continue
+
         # The tutorial freezes the sim while it's talking and releases it for
         # steps that need the player to act; the day panel and the outcome
         # screen freeze it outright.
-        if not (tutorial.blocks_gameplay() or day_panel.blocks_gameplay() or state.game_over):
+        if not ((tutorial_on and tutorial.blocks_gameplay()) or day_panel.blocks_gameplay()
+                or state.game_over):
             state.update(dt)
 
         # Recompute layout every frame from the actual surface size so resizing
@@ -193,7 +257,6 @@ def main():
         spigot_rect, box_rect, chart_rect, city_rect = compute_layout(screen_w, screen_h)
         spigot_panel.rect = spigot_rect
         demand_chart.rect = chart_rect
-        city_grid.rect = city_rect
 
         if frame.get_size() != (screen_w, screen_h):
             frame = pygame.Surface((screen_w, screen_h), depth=24)
@@ -233,13 +296,14 @@ def main():
                 tank_half_w * 2,
                 box_height_px + box_footprint_px,
             ),
-            "city": city_rect.union(city_grid.label_rect()),
+            "city": city_rect,   # now the homes-without-power readout anchor
             "speed_control": speed_control.bounds(),
         }
 
         # The outcome screen and the day panel both suppress the tutorial: a
-        # failure or a day rollover must never drive tutorial dialogue.
-        if not (state.game_over or day_panel.blocks_gameplay()):
+        # failure or a day rollover must never drive tutorial dialogue. The
+        # tutorial itself only runs on the Standard grid.
+        if tutorial_on and not (state.game_over or day_panel.blocks_gameplay()):
             tutorial.update(dt, state, regions, audio)
         day_panel.update(dt, state, regions, audio)
 
@@ -258,8 +322,10 @@ def main():
         was_celebrating = celebrating
 
         # ---- render, back to front ----
-        # 1. time-of-day background
+        # 1. time-of-day background + city skyline behind the world (its lit
+        #    windows track supply, so the glow reads as an at-a-glance status)
         sky.draw(frame, frame.get_rect(), state.sim_hour, state.active_event)
+        city_grid.draw_backdrop(frame, box_rect, state.fill_pct_display)
 
         # 2. world / game objects
         pygame.draw.rect(frame, PANEL_COLOR, spigot_rect)
@@ -284,22 +350,23 @@ def main():
         demand_box.draw(frame, box_height_px, box_footprint_px,
                         state.fill_pct_display, agitation, tint_rgb)
         demand_chart.draw(frame, state.sim_hour, state.sources, state.history,
-                          state.demand_mw, DEMAND_MIN_MW, DEMAND_PEAK_MW)
-        city_grid.draw(frame, state.fill_pct_display)
+                          state.demand_mw, state.demand_min_mw, state.demand_peak_mw)
 
-        # 4. world-attached labels
-        city_grid.draw_homes_label(frame, state.homes_without_power, state.homes_total)
+        # 4. world-attached labels (homes readout anchored where the old city
+        #    corner panel sat, now that the city is the full backdrop)
+        city_grid.draw_homes_label(frame, city_rect, state.homes_without_power, state.homes_total)
 
         # 5. normal HUD
         hud.draw(frame, state, TOP_HUD_HEIGHT)
         speed_control.draw(frame, state)
         hud.draw_audio_indicator(frame, audio, (24, speed_control.bounds().bottom + 6))
 
-        # 6. highlights and tutorial indicators
-        tutorial.draw_highlight(frame)
+        # 6. highlights and tutorial indicators (Standard grid only)
+        if tutorial_on:
+            tutorial.draw_highlight(frame)
+            tutorial.draw(frame)
 
-        # 7. dialogue / end-of-day panel
-        tutorial.draw(frame)
+        # 7. end-of-day panel
         day_panel.draw(frame)
 
         # 8. success / failure overlay
@@ -312,7 +379,10 @@ def main():
         # target offset is low-pass filtered rather than applied raw, so it
         # wanders smoothly instead of teleporting to a new random position
         # every single frame (a 60Hz jitter reads as harsh/flickery).
-        severity = 0.0 if state.game_over else _severity(state.fill_pct_display)
+        # keep the centered end-of-day takeover rock-steady even if the day
+        # ended mid-crisis (fill_pct_display is frozen at whatever it was)
+        severity = 0.0 if (state.game_over or day_panel.blocks_gameplay()) \
+            else _severity(state.fill_pct_display)
         if severity > 0.05:
             mag = severity * 6
             target_x = random.uniform(-mag, mag)
@@ -327,7 +397,8 @@ def main():
 
         pygame.display.flip()
 
-    state.persist_high_score()
+    if state is not None:
+        state.persist_high_score()
     pygame.quit()
     sys.exit()
 

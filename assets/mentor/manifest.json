@@ -1,0 +1,95 @@
+{
+  "transparent_background": true,
+  "assets": [
+    {
+      "file": "mentor_neutral.png",
+      "type": "mentor_portrait",
+      "size": [
+        315,
+        282
+      ],
+      "transparent_pixels": 45605,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "mentor_explaining.png",
+      "type": "mentor_portrait",
+      "size": [
+        315,
+        282
+      ],
+      "transparent_pixels": 43044,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "mentor_talking_alert.png",
+      "type": "mentor_portrait",
+      "size": [
+        315,
+        282
+      ],
+      "transparent_pixels": 47385,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "mentor_instruction_point.png",
+      "type": "mentor_portrait",
+      "size": [
+        315,
+        282
+      ],
+      "transparent_pixels": 44057,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "mentor_game_over_angry.png",
+      "type": "mentor_portrait",
+      "size": [
+        315,
+        282
+      ],
+      "transparent_pixels": 46114,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "mentor_success_thumbsup.png",
+      "type": "mentor_portrait",
+      "size": [
+        315,
+        282
+      ],
+      "transparent_pixels": 44065,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "sign_start_tutorial.png",
+      "type": "ui_sign",
+      "size": [
+        517,
+        366
+      ],
+      "transparent_pixels": 29746,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "sign_game_over.png",
+      "type": "ui_sign",
+      "size": [
+        529,
+        377
+      ],
+      "transparent_pixels": 31120,
+      "alpha_mode": "binary_rgba"
+    },
+    {
+      "file": "sign_well_done.png",
+      "type": "ui_sign",
+      "size": [
+        498,
+        389
+      ],
+      "transparent_pixels": 33573,
+      "alpha_mode": "binary_rgba"
+    }
+  ]
+}

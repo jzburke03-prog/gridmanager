@@ -58,7 +58,7 @@ class PipeSystem:
              water_drop_px=0.0):
         dt = 1.0 / 60.0
         self.t += dt
-        left_keys = ["nuclear", "coal", "gas"]
+        left_keys = ["nuclear", "coal", "gas", "peaker"]
         right_keys = ["solar", "wind", "hydro"]
         by_key = {s.key: s for s in sources}
 

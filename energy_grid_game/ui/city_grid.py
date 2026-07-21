@@ -1,30 +1,30 @@
-"""Small corner widget mirroring the demand chart: a city skyline whose
-windows light up in proportion to how much of demand is actually being met.
-At severe undersupply the city dims with a slow brownout pulse; at severe
-oversupply it glows an escalating amber-to-red instead of steadily, so the
-two failure modes read as visually distinct disasters.
+"""Full-width city skyline drawn as a faint backdrop behind the gameplay.
 
-All severity effects use slow, smooth, low-contrast color easing rather than
-any hard on/off flashing — capped well under ~3 Hz — since large-area strobe
-effects are a real photosensitive-seizure trigger.
+Its windows light up in proportion to how much of demand is being met, so the
+city's glow doubles as an at-a-glance supply readout: it dims to a slow brownout
+when undersupplied and eases toward red when overloaded. Rendered at low opacity
+so it sits behind the tank without competing with it.
+
+All severity effects use slow, smooth, low-contrast easing rather than any hard
+on/off flashing — capped well under ~3 Hz — since large-area strobe effects are a
+real photosensitive-seizure trigger.
 """
 import math
 import random
 import pygame
 
-BG = (12, 15, 24)
-BORDER = (55, 64, 86)
+from ui import assets
+
 LABEL_DIM = (150, 158, 176)
 LABEL_OK = (100, 220, 140)
 LABEL_WARN = (240, 170, 80)
 LABEL_BAD = (230, 90, 90)
-LABEL_GAP = 6           # breathing room between the label block and the panel
-SKY_DIM = (26, 32, 48)
-BUILDING_OFF = (30, 36, 52)
-BUILDING_ON = (46, 56, 78)
-WINDOW_OFF = (40, 46, 62)
+BUILDING = (18, 22, 36)
 WINDOW_ON = (255, 214, 120)
 WINDOW_OVERLOAD = (255, 90, 70)
+
+BODY_ALPHA = 48          # faint silhouette
+WINDOW_ALPHA = 150       # the lit windows are the prominent, supply-tracking part
 
 
 def _lerp_color(a, b, t):
@@ -44,154 +44,100 @@ class _Building:
 
 
 class CityGrid:
-    N_BUILDINGS = 14
+    N_BUILDINGS = 46
 
-    SPARK_LIFE = 0.7
-
-    def __init__(self, rect: pygame.Rect, font, font_label=None):
-        self.rect = rect
+    def __init__(self, font, font_label=None):
         self.font = font
         self.font_label = font_label or font
         self.t = 0.0
         self._rng = random.Random(2024)
         self.buildings = self._make_buildings()
-        self._sparks = []  # [age, x, y]
-
-    # -- world-attached label ---------------------------------------------
-
-    def label_rect(self) -> pygame.Rect:
-        """Space the homes label needs, directly above the city panel. Derived
-        from self.rect so it tracks the panel through any resize instead of
-        sitting at fixed screen coordinates."""
-        h = self.font.get_height() + self.font_label.get_height() + 2
-        return pygame.Rect(self.rect.left, self.rect.top - LABEL_GAP - h, self.rect.width, h)
-
-    def draw_homes_label(self, surface, homes_out: float, homes_total: float):
-        """"Homes Without Power" belongs to the city, not the top HUD, so it is
-        drawn here: centred over the skyline and clear of the buildings."""
-        if homes_out > 500:
-            color = LABEL_BAD if homes_out > homes_total * 0.5 else LABEL_WARN
-            caption, value = "HOMES WITHOUT POWER", f"{homes_out:,.0f}"
-        else:
-            color = LABEL_OK
-            caption, value = "HOMES WITHOUT POWER", "0"
-
-        rect = self.label_rect()
-        cap_txt = self.font.render(caption, True, LABEL_DIM)
-        val_txt = self.font_label.render(value, True, color)
-        surface.blit(cap_txt, (rect.centerx - cap_txt.get_width() // 2, rect.top))
-        surface.blit(val_txt, (rect.centerx - val_txt.get_width() // 2,
-                               rect.top + cap_txt.get_height() + 2))
+        self._surf = None   # cached full-screen scratch surface
 
     def _make_buildings(self):
-        buildings = []
         rng = self._rng
-        x = 8
+        buildings = []
+        x = 0
         priorities = list(range(self.N_BUILDINGS))
         rng.shuffle(priorities)  # stable random lighting order
         for i in range(self.N_BUILDINGS):
-            w = rng.randint(14, 24)
-            h = rng.randint(28, 95)
-            cols = max(1, w // 8)
-            rows = max(1, h // 14)
-            buildings.append(_Building(x, w, h, cols, rows, priorities[i] / self.N_BUILDINGS, rng.random() * 10))
-            x += w + rng.randint(3, 7)
+            w = rng.randint(18, 40)
+            h = rng.randint(70, 240)
+            cols = max(1, w // 9)
+            rows = max(2, h // 18)
+            buildings.append(_Building(x, w, h, cols, rows,
+                                       priorities[i] / self.N_BUILDINGS, rng.random() * 10))
+            x += w + rng.randint(4, 12)
         self._total_w = x
         return buildings
 
-    def draw(self, surface, fill_pct):
+    def draw_backdrop(self, surface, rect, fill_pct):
+        """Draw the skyline rising from rect.bottom across rect.width, its lit
+        windows tracking fill_pct (1.0 = meeting demand)."""
         self.t += 1.0 / 60.0
-        pygame.draw.rect(surface, BG, self.rect, border_radius=6)
-        pygame.draw.rect(surface, BORDER, self.rect, width=1, border_radius=6)
-
-        title = self.font.render("CITY GRID", True, (150, 158, 176))
-        surface.blit(title, (self.rect.left + 8, self.rect.top + 4))
-
         lit_frac = max(0.0, min(1.0, fill_pct))
-        undersupply_severity = max(0.0, min(1.0, (0.5 - fill_pct) / 0.5)) if fill_pct < 0.5 else 0.0
-        overload_severity = max(0.0, min(1.0, (fill_pct - 1.0) / 0.8)) if fill_pct > 1.0 else 0.0
+        under = max(0.0, min(1.0, (0.5 - fill_pct) / 0.5)) if fill_pct < 0.5 else 0.0
+        over = max(0.0, min(1.0, (fill_pct - 1.0) / 0.8)) if fill_pct > 1.0 else 0.0
 
-        # scale/center the skyline within the panel
-        avail_w = self.rect.width - 16
-        scale = min(1.0, avail_w / max(1, self._total_w))
-        base_x = self.rect.left + 8 + (avail_w - self._total_w * scale) / 2
-        base_y = self.rect.bottom - 10
+        if self._surf is None or self._surf.get_size() != surface.get_size():
+            self._surf = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        city = self._surf
+        city.fill((0, 0, 0, 0))
 
-        city_surf = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-
+        scale = rect.width / self._total_w
+        base_y = rect.bottom
         for b in self.buildings:
             is_on = b.priority < lit_frac
             bw, bh = b.w * scale, b.h * scale
-            bx = base_x + b.x * scale
-            rect = pygame.Rect(int(bx), int(base_y - bh), max(1, int(bw)), int(bh))
+            bx = rect.left + b.x * scale
+            br = pygame.Rect(int(bx), int(base_y - bh), max(1, int(bw)), int(bh))
+            pygame.draw.rect(city, (*BUILDING, BODY_ALPHA), br)
+            if not is_on:
+                continue
 
-            # brownout dimming: a slow (<1Hz), per-building out-of-phase
-            # brightness sag rather than a hard on/off cut — reads as failing
-            # power, not a flash
+            # brownout dimming (slow, out-of-phase per building) and overload
+            # glow (warm -> red) reuse the corner widget's easing feel.
             dim = 0.0
-            if undersupply_severity > 0 and is_on:
-                wobble = 0.5 + 0.5 * math.sin(self.t * (0.7 + b.flicker_seed * 0.15) + b.flicker_seed * 6.28)
-                dim = undersupply_severity * wobble
-            flicker_on = is_on and dim < 0.85
-
-            body_color = _lerp_color(BUILDING_ON, BUILDING_OFF, dim) if is_on else BUILDING_OFF
-            pygame.draw.rect(city_surf, body_color, rect)
-
-            # overload glow: a slow (<=0.8Hz) smooth ease from warm white
-            # toward red as severity rises, never a hard color swap
-            glow_t = 0.0
-            if overload_severity > 0:
-                glow_wave = 0.5 + 0.5 * math.sin(self.t * (0.6 + b.flicker_seed * 0.1) + b.flicker_seed * 6.28)
-                glow_t = min(1.0, overload_severity * (0.5 + 0.5 * glow_wave))
+            if under > 0:
+                wob = 0.5 + 0.5 * math.sin(self.t * (0.7 + b.flicker_seed * 0.15) + b.flicker_seed * 6.28)
+                dim = under * wob
+            glow = 0.0
+            if over > 0:
+                gw = 0.5 + 0.5 * math.sin(self.t * (0.6 + b.flicker_seed * 0.1) + b.flicker_seed * 6.28)
+                glow = min(1.0, over * (0.5 + 0.5 * gw))
 
             cols, rows = b.windows
-            win_w = rect.width / cols
-            win_h = rect.height / max(1, rows)
-            for cx in range(cols):
-                for cy in range(rows):
-                    wx = rect.left + cx * win_w + win_w * 0.2
-                    wy = rect.top + cy * win_h + win_h * 0.25
-                    ww = max(1, win_w * 0.6)
-                    wh = max(1, win_h * 0.5)
-                    if not flicker_on:
-                        color = _lerp_color(WINDOW_OFF, WINDOW_ON, max(0.0, 1.0 - dim)) if is_on else WINDOW_OFF
-                    elif glow_t > 0:
-                        color = _lerp_color(WINDOW_ON, WINDOW_OVERLOAD, glow_t)
-                    else:
-                        color = WINDOW_ON
-                    pygame.draw.rect(city_surf, color, (wx, wy, ww, wh))
+            ww = br.width / cols
+            wh = br.height / max(1, rows)
+            base = _lerp_color(WINDOW_ON, WINDOW_OVERLOAD, glow) if glow > 0 else WINDOW_ON
+            alpha = int(WINDOW_ALPHA * max(0.15, 1.0 - dim))
+            for cxi in range(cols):
+                for cyi in range(rows):
+                    wx = br.left + cxi * ww + ww * 0.25
+                    wy = br.top + cyi * wh + wh * 0.25
+                    pygame.draw.rect(city, (*base, alpha),
+                                     (wx, wy, max(1, ww * 0.5), max(1, wh * 0.5)))
+        surface.blit(city, (0, 0))
 
-        surface.blit(city_surf, (0, 0))
-
-        # overload sparks: soft glints that fade in and out over ~0.7s rather
-        # than blipping on/off in a single frame (sparse, brief, and small —
-        # not a full-panel flash either way, but a smooth fade is gentler)
-        if overload_severity > 0.25 and self._rng.random() < 0.01 + overload_severity * 0.02:
-            b = self._rng.choice(self.buildings)
-            bx = base_x + (b.x + b.w / 2) * scale
-            by = base_y - b.h * scale - 3
-            self._sparks.append([0.0, bx, by])
-
-        for s in self._sparks:
-            s[0] += 1.0 / 60.0
-        self._sparks = [s for s in self._sparks if s[0] < self.SPARK_LIFE]
-        for age, sx, sy in self._sparks:
-            life = age / self.SPARK_LIFE
-            fade = math.sin(life * math.pi)  # smooth in-out envelope, no hard edges
-            spark_surf = pygame.Surface((10, 10), pygame.SRCALPHA)
-            pygame.draw.circle(spark_surf, (255, 220, 210, int(200 * fade)), (5, 5), 2)
-            surface.blit(spark_surf, (sx - 5, sy - 5))
-
-        # status caption
-        if fill_pct >= 1.8:
-            caption, color = "GRID OVERLOAD", WINDOW_OVERLOAD
-        elif fill_pct >= 1.0:
-            caption, color = "STRAINED", (240, 200, 90)
-        elif fill_pct < 0.15:
-            caption, color = "CITYWIDE BLACKOUT", (230, 80, 80)
-        elif fill_pct < 0.5:
-            caption, color = "ROLLING BROWNOUTS", (230, 140, 70)
+    def draw_homes_label(self, surface, anchor, homes_out: float, homes_total: float):
+        """"Homes Without Power" readout, centred on the anchor rect's column."""
+        if homes_out > 500:
+            color = LABEL_BAD if homes_out > homes_total * 0.5 else LABEL_WARN
+            value = f"{homes_out:,.0f}"
         else:
-            caption, color = "STABLE", (100, 220, 140)
-        cap_txt = self.font.render(caption, True, color)
-        surface.blit(cap_txt, (self.rect.right - cap_txt.get_width() - 8, self.rect.top + 4))
+            color, value = LABEL_OK, "0"
+        cap_txt = self.font.render("HOMES WITHOUT POWER", True, LABEL_DIM)
+        val_txt = self.font_label.render(value, True, color)
+        pop_icon = assets.resource_icon("population", 14)
+        cx = anchor.centerx
+        cap_x = cx - cap_txt.get_width() // 2
+        # dark scrim so the readout stays legible over the lit city behind it
+        block_h = cap_txt.get_height() + val_txt.get_height() + 4
+        block_w = max(cap_txt.get_width() + 20, val_txt.get_width()) + 24
+        scrim = pygame.Surface((block_w, block_h + 10), pygame.SRCALPHA)
+        scrim.fill((10, 13, 21, 165))
+        surface.blit(scrim, (cx - block_w // 2, anchor.top - 5))
+        surface.blit(pop_icon, (cap_x - pop_icon.get_width() - 4,
+                                anchor.top + (cap_txt.get_height() - 14) // 2))
+        surface.blit(cap_txt, (cap_x, anchor.top))
+        surface.blit(val_txt, (cx - val_txt.get_width() // 2, anchor.top + cap_txt.get_height() + 2))
