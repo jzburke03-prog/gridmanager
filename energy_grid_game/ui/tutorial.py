@@ -258,7 +258,12 @@ class TutorialManager:
                 return True
             if self.state == DialogueState.WAITING_FOR_GAME_ACTION:
                 target = self.highlight_rect
-                if target and target.collidepoint(event.pos):
+                # No target means the step's `highlight` key is missing from the
+                # region dict. Fall OPEN, not closed: with `if target and ...`
+                # a missing key sent every click to _correct(), so it never
+                # reached gameplay, so the wait_for condition could never be
+                # satisfied — an unrecoverable soft-lock from one typo'd key.
+                if target is None or target.collidepoint(event.pos):
                     return False  # the click we asked for: let gameplay have it
                 self._correct(audio)
                 return True       # stray click: don't let it reach the grid
@@ -292,7 +297,7 @@ class TutorialManager:
         # The box may sit over the city itself (it's the backdrop) but never over
         # the readouts floating on it, and never over the highlight it is
         # pointing at — it can't cover the thing it's asking the player to use.
-        blocked = [self._regions.get(k) for k in ("chart", "readout", "spigot_panel",
+        blocked = [self._regions.get(k) for k in ("chart", "readout",
                                                   "speed_control")]
         blocked.append(self.highlight_rect)
         cluster = get_dialogue_rect(screen_rect, portrait.get_size(), blocked, box_size)

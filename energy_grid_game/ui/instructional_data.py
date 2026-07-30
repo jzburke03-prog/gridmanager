@@ -106,7 +106,7 @@ DAYS = {
             "id": "d1_raise",
             "portrait": portraits.POINTING,
             "speaker": SPEAKER,
-            "highlight": "spigot_panel",
+            "highlight": "pin_generic",
             "wait_for": "generic_raised",
             "lines": [
                 "One handle. Marked ELECTRICITY. Grab it and pull it up.",
@@ -119,7 +119,7 @@ DAYS = {
             },
             "correction": {
                 "portrait": portraits.TALKING,
-                "text": "Not there. The handle's on the card up top.",
+                "text": "Not there. The handle floats over the plant itself.",
             },
         },
         {
@@ -174,7 +174,7 @@ DAYS = {
             "id": "d2_gas",
             "portrait": portraits.POINTING,
             "speaker": SPEAKER,
-            "highlight": "gas_card",
+            "highlight": "pin_gas",
             "learn_more": "gas",
             "lines": [
                 "Combined-cycle gas. Ramps in seconds, does most of the work.",
@@ -195,7 +195,7 @@ DAYS = {
             "id": "d2_peaker",
             "portrait": portraits.POINTING,
             "speaker": SPEAKER,
-            "highlight": "spigot_panel",
+            "highlight": "pin_peaker",
             "wait_for": "peaker_running",
             "learn_more": "peaker",
             "lines": [
@@ -210,7 +210,7 @@ DAYS = {
             },
             "correction": {
                 "portrait": portraits.TALKING,
-                "text": "The peaker's the small one next to gas. Open its handle.",
+                "text": "The peaker's the little jet-engine plant. Open its handle.",
             },
         },
         {
@@ -238,7 +238,7 @@ DAYS = {
             "id": "d3_baseload",
             "portrait": portraits.POINTING,
             "speaker": SPEAKER,
-            "highlight": "spigot_panel",
+            "highlight": "pins",
             "wait_for": "baseload_running",
             "learn_more": "coal",
             "lines": [
@@ -260,7 +260,7 @@ DAYS = {
             "id": "d3_nuclear",
             "portrait": portraits.TALKING,
             "speaker": SPEAKER,
-            "highlight": "spigot_panel",
+            "highlight": "pin_nuclear",
             "learn_more": "nuclear",
             "lines": [
                 "One rule about nuclear, and I mean it.",
@@ -293,7 +293,7 @@ DAYS = {
             "id": "d4_renewables",
             "portrait": portraits.POINTING,
             "speaker": SPEAKER,
-            "highlight": "spigot_panel",
+            "highlight": "pins",
             "wait_for": "renewable_opened",
             "learn_more": "solar",
             "lines": [

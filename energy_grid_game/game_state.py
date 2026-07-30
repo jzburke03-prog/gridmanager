@@ -279,6 +279,17 @@ class GameState:
         # them) so the summary shows totals for the whole run, matching the
         # cumulative self.score / self.total_cost.
         self.cost_by_source = {}      # source_key -> cumulative $ this run
+        # Capacity factor inputs: MW-hours actually generated, and the MW-hours
+        # the plant could have generated flat out over the same period —
+        # generated / possible, the real industry measure of how hard a plant
+        # was worked, which is not the same as its share of the mix.
+        #
+        # Reset each day, unlike cost_by_source: the panel reports on the day
+        # just finished, and carrying totals forward meant a plant that only
+        # existed on day 1 (Instructional's generic valve) still reported a
+        # capacity factor on day 4, long after it had been retired.
+        self.mwh_by_source = {}
+        self.mwh_possible_by_source = {}
         self.time_ideal = 0.0         # cumulative sim-hours inside the ideal band
         self.time_under = 0.0         # cumulative sim-hours below ideal_low
         self.time_over = 0.0          # cumulative sim-hours above ideal_high
@@ -293,6 +304,7 @@ class GameState:
         if cfg.is_instructional:
             self.sources.insert(0, GenericSource())
         self._apply_config(cfg)
+        self._apply_day_capacities()
 
     def _apply_config(self, cfg):
         """Stamp per-run capacities, starting mix, and renewable availability
@@ -330,6 +342,32 @@ class GameState:
     def speed_down(self):
         idx = SPEED_STEPS.index(self.game_speed) if self.game_speed in SPEED_STEPS else 2
         self.game_speed = SPEED_STEPS[max(idx - 1, 0)]
+
+    def capacity_factor(self, key: str):
+        """Generated ÷ generatable-at-nameplate, 0..1, or None if never online.
+
+        The standard industry measure of how hard a plant was worked. Distinct
+        from its share of the mix: a peaker can supply a big slice of a brief
+        evening peak and still finish the day with a tiny capacity factor.
+        """
+        possible = self.mwh_possible_by_source.get(key, 0.0)
+        if possible <= 1e-6:
+            return None
+        return self.mwh_by_source.get(key, 0.0) / possible
+
+    def _apply_day_capacities(self):
+        """Stamp today's per-day capacities (Instructional Mode).
+
+        Days 1-3 all total 1500 MW, split across more plants as the fleet is
+        revealed, so the headroom the player has to work with never shifts
+        underneath them mid-course. Sources not in today's table are zeroed so a
+        locked plant can never contribute.
+        """
+        caps = self.config.capacities_for_day(self.day)
+        if caps is None:
+            return
+        for src in self.sources:
+            src.max_output_mw = caps.get(src.key, 0.0)
 
     # -- Instructional Mode gating ----------------------------------------
     @property
@@ -421,6 +459,10 @@ class GameState:
                     s.requested_pct = 0.0
                     s.actual_pct = 0.0
                     s.status = SourceStatus.OFFLINE
+        self._apply_day_capacities()      # today's fleet, after the day advanced
+        # Capacity factor is a per-day statistic; start the new day clean.
+        self.mwh_by_source = {}
+        self.mwh_possible_by_source = {}
         self.date = self.date + datetime.timedelta(days=1)
         self.day_hours = 0.0
         self.day_complete = False
@@ -544,6 +586,16 @@ class GameState:
         cost_rate = 0.0
         marginal_price = 0.0
         for s in self.sources:
+            # Capacity factor is measured against nameplate, not against what
+            # the weather allowed — a becalmed wind farm has a low capacity
+            # factor, and that is exactly the fact worth showing the player.
+            if s.max_output_mw > 0:
+                self.mwh_by_source[s.key] = (self.mwh_by_source.get(s.key, 0.0)
+                                             + s.current_output_mw * sim_hours_elapsed)
+                self.mwh_possible_by_source[s.key] = (
+                    self.mwh_possible_by_source.get(s.key, 0.0)
+                    + s.max_output_mw * sim_hours_elapsed)
+
             price = s.price_at(self.demand_level)
             if s.key in ("gas", "peaker") and scarcity:
                 price *= EVENT_SCARCITY_MULTIPLIER

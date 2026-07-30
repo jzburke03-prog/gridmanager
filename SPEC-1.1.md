@@ -4,23 +4,21 @@ Status: draft spec. Supersedes the water-tank visualization from 1.0.
 
 Three independent workstreams:
 
-1. **Satellite city view** replaces the isometric water cube (§1)
+1. **Seamless isometric regional stage** replaces the water cube (§1)
 2. **Standard grid capacity rebalance** to a 1750 MW fleet (§2)
 3. **Instructional Mode** — a four-day guided onboarding grid (§3)
 
 §2 is a half-day change. §1 and §3 are each substantial and can ship separately;
 §3 depends on §1 only for the callout-box art placement, not functionally.
 
-**1.1 is groundwork for 1.2.** The target is a transmission model — flow through
-constrained paths, congestion when too much is pushed down one of them. Nothing in
-1.1 simulates that, but two decisions here exist to make it cheap later: the
-hydraulic model and vocabulary stay (§1.2), and the per-source water mains stay as
-independent channels rather than collapsing into a single aggregate feed (§1.6).
-Where a 1.1 choice is made for 1.2's benefit rather than its own, it is marked.
+**1.1 is groundwork for 1.2.** Each power plant now has its own visible
+transmission route to a neighbourhood substation. Congestion is still deferred,
+but the per-route `Flow` objects preserve the independent channels that model
+will attach to later (§1.6).
 
 ---
 
-## 1. Visualization: overhead city grid
+## 1. Visualization: seamless isometric regional grid
 
 ### 1.1 Rationale
 
@@ -29,16 +27,18 @@ level in a vessel. That reads cleanly but implies electricity is *stored*, which
 is exactly the misconception the game exists to correct — and it leaves no
 surface to express congestion, locality, or time-of-day load at all.
 
-Replacement: a satellite/overhead view of the city grid, occupying the full lower
-region the tank used. The city stops being decorative backdrop and becomes the
-primary instrument.
+Replacement: an isometric city and its surrounding power region, occupying every
+pixel behind three centered translucent HUD islands. The city stops being
+decorative backdrop and becomes the primary instrument. At 1x the camera reveals
+more countryside; it never shrinks a finite city rectangle over a separate
+background.
 
 ### 1.2 What is removed
 
 | Item | Location |
 |---|---|
 | `DemandBox` (isometric tank renderer) | `ui/demand_box.py` — delete, 354 lines |
-| `CityGrid.draw_backdrop` (silhouette skyline) | `ui/city_grid.py:74` — replaced, not deleted |
+| `CityGrid` (satellite renderer) | `ui/city_grid.py` — replaced by `ui/iso_city.py` |
 | `box_scale`, `box_height_px`, `box_footprint_px` | `game_state.py:214-216`, `:396-401` |
 | `MAX_BOX_*`, `MIN_BOX_*`, `BOX_LERP_SPEED` | `game_state.py:25-29` |
 | `ISO_HALF_WIDTH_RATIO`, `BOX_*_MARGIN`, box scale-to-fit math | `main.py:41-44`, `:264-282` |
@@ -61,10 +61,25 @@ city rect rather than the corner readout anchor.
 
 ### 1.3 Layout
 
-The city occupies all of `box_rect` — the full width, from the spigot panel's
-bottom edge to the window bottom (430 px at the 1400×900 default). `compute_layout`
+The city occupies the full frame behind the HUD. `compute_layout`
 ([main.py:62](energy_grid_game/main.py:62)) keeps returning `chart_rect` and a
 readout anchor, both now insets floating over the city rather than beside the tank.
+Clock/operations, grid status, and score/economics are grouped into three rounded
+semi-translucent islands centered as one row with equal 24px gaps. There is no
+opaque full-width top band.
+
+The deterministic world is sized from minimum 1x camera coverage plus overscan,
+not from the default 2x view. Legal camera centers can therefore never expose a
+world edge. One semantic layout feeds additive art detail:
+
+- **1x regional:** terrain parcels, district masses, major roads, plant
+  silhouettes, substations and transmission corridors;
+- **2x gameplay:** building facades, lane paint, recognizable vehicles,
+  switchyards, transformers and distribution branches;
+- **4x inspection:** roof equipment, crossings, vehicle details, panel supports,
+  equipment frames, insulators and fine service connections.
+
+Zoom changes select cached detail layers and never regenerate the layout.
 
 Geometry: **a road network, not a grid of blocks.** A rectilinear array of equal
 cells was tried first and reads as a spreadsheet from above, which is precisely
@@ -188,8 +203,12 @@ so the sky and the city cannot disagree. Two channels:
   a bright sky colour over the whole city blows the frame to flat pastel at noon
   and floods it salmon at dusk, destroying the read the view exists to convey.
 
-`SkyLayer`'s weather overlays (rain, snow, cloud, gust streaks) already draw
-full-frame and composite over the city unchanged.
+There is no separate sky backdrop. `ui/atmosphere.py` derives a deterministic
+world tint and material response from the same clock: cloud shadows cross the
+terrain, rain darkens the scene and adds clipped streaks, snow/ice tint surfaces
+as well as adding precipitation, wind moves world effects, and heat adds a
+restrained shimmer. Dynamic particles are clipped to the stage; the HUD is never
+weather-tinted.
 
 ### 1.5 Overload
 
@@ -240,41 +259,27 @@ as the network fraying rather than snapping.
 **Accessibility — do not simplify this away.** All severity animation stays slow,
 smooth, low-contrast easing, capped well under 3 Hz. No hard on/off flashing on
 large screen areas; large-area strobe is a photosensitive-seizure trigger. This
-constraint is documented in the current `city_grid.py` module docstring and must
+constraint is documented in the current `iso_city.py` module docstring and must
 survive the rewrite.
 
-### 1.6 Pipes stay pipes
+### 1.6 Transmission corridors replace water pipes
 
-`PipeSystem` ([ui/pipes.py](energy_grid_game/ui/pipes.py)) survives **as water
-pipes**, not restyled to transmission lines. One run from each spigot card down
-into the city, flow rate and droplet density scaling with that source's
-`current_output_mw`, in that source's existing color. This preserves the
-at-a-glance "which plant is actually carrying the load" read, which nothing else
-on screen provides — the spigot cards show requested output, and the demand chart
-shows the mix only in retrospect.
+The hydraulic pipe overlay is removed. Each plant now routes a visible chain from
+its decorative switchyard through high-voltage corridors and a regional
+substation, then through street-aligned distribution feeders and neighbourhood
+transformers to homes and businesses. Lattice pylons and sagging conductors are
+baked into the city, while blue pulses show the source's live `actual_pct` and
+downstream served state. Offline plants keep their physical circuit but emit no
+pulses; undersupply de-energises the same feeder clusters whose buildings go dark.
 
-Only one thing changes: with no tank surface to land on, `water_drop_px`
-(`main.py:339-343`) stops tracking `fill_pct` and becomes a fixed drop to the city
-edge, where each pipe discharges into the grid.
+Switchyards contain transformers, breakers, busbars, insulators and gantries but
+are deliberately aesthetic-only in 1.1: no controls, capacity, economics, failures
+or click targets.
 
-**Why the hydraulic metaphor is kept.** The pipes are the intended substrate for
-transmission physics in a later release — flow through a constrained channel,
-resistance rising with throughput, congestion when too much is pushed through one
-path. That model needs discrete per-source channels with individual carrying
-capacity, which is exactly what `PipeSystem` already is. Collapsing the pipes into
-undifferentiated transmission lines now would have to be undone later.
-
-Two implications for how 1.1 is built:
-
-- Keep each source's pipe an independent object with its own geometry and flow
-  state. Do not merge them into a single aggregate feed for rendering economy.
-- Leave a per-pipe throughput value in place even though nothing consumes it in
-  1.1 — it is where a capacity limit and a congestion penalty will attach.
-
-The mains stay visible in 1.1 and read as trunk mains entering the city from the
-panel edge. The overhead-city-plus-water-mains mixed metaphor is accepted for this
-release rather than designed around — 1.2 is expected to repurpose them, and
-resolving the visual language before that model exists would be guessing at it.
+Each route owns an independent `Flow` object. That keeps the per-source channels
+needed by the later carrying-capacity and congestion model without retaining the
+misleading visual claim that electricity is water discharged from a control
+panel. A plant at zero output leaves a dark but visible circuit.
 
 ---
 
@@ -424,9 +429,8 @@ def active_sources(self):
     """Sources the player can see and touch today."""
 ```
 
-…and use it only at the render/input boundary: `spigot_panel.draw`,
-`spigot_panel.handle_mouse_down/motion`, `spigot_panel.card_rects`, and
-`pipes.draw`. Nothing in the simulation changes.
+…and use it only at the render/input boundary: plant-pin drawing, hit-testing,
+and transmission-flow lookup. Nothing in the simulation changes.
 
 ### 3.5 Failure suppression
 
@@ -560,16 +564,20 @@ None blocking. Everything raised during drafting is now settled:
 | Two-pagers deferred; empty `CONTENT`, no button rendered | §3.7 |
 | Day 4 terminal → menu, completion marker in `highscore.json` | §3.8 |
 
-Still undecided but deliberately out of scope for 1.1: the transmission/congestion
-model itself (1.2), and the final art treatment of the overhead city.
+Still deliberately out of scope for 1.1: the transmission/congestion model itself
+(1.2). The present switchyards and per-route `Flow` objects are visual groundwork,
+not a load-flow simulation.
 
 ## 5. Files touched
 
 | File | Change |
 |---|---|
 | `ui/demand_box.py` | delete |
-| `ui/city_grid.py` | rewrite as overhead grid renderer |
-| `ui/pipes.py` | pipes kept as-is; only the discharge point moves to the city edge |
+| `ui/iso_city.py` | isometric renderer, camera, plants, and transmission routes |
+| `ui/atmosphere.py` | world-integrated time/weather sampling and clipped effects |
+| `ui/sky.py` | delete; no separate sky/background layer |
+| `ui/plant_pins.py` | map-native plant controls |
+| `ui/pipes.py`, `ui/spigot_panel.py` | delete; replaced by transmission and plant pins |
 | `physics/water_sim.py` | **untouched** — substrate for the transmission model |
 | `ui/tutorial.py` | `steps=` parameter |
 | `ui/tutorial_data.py` | rewrite the `tank` step |

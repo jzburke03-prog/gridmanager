@@ -35,6 +35,17 @@ INSTRUCTIONAL_UNLOCKS = {
 }
 INSTRUCTIONAL_FINAL_DAY = max(INSTRUCTIONAL_UNLOCKS)
 
+# Per-day capacities. Days 1-3 each hand the player the same 1500 MW, just
+# split across more plants as the fleet is revealed, so the total available
+# never changes underneath them while they are still learning to balance.
+# Day 4 is filled in below with the real Standard fleet — the grid they
+# graduate into — once STANDARD_CAPACITIES exists.
+INSTRUCTIONAL_CAPACITIES = {
+    1: {"generic": 1500.0},
+    2: {"gas": 1400.0, "peaker": 100.0},
+    3: {"nuclear": 200.0, "coal": 300.0, "gas": 900.0, "peaker": 100.0},
+}
+
 # Days 1-3 run without weather: an unexplained heat wave while the player is
 # still learning what a demand curve is reads as noise, not as teaching. Day 4 is
 # where intermittency IS the lesson, so events come on with the renewables.
@@ -120,6 +131,10 @@ _SEASON = {
     9: (1.00, 0.92), 10: (0.95, 0.82), 11: (0.99, 0.68),  # fall
 }
 
+# Instructional day 4 graduates onto the real Standard fleet, so the grid the
+# player finishes on is the grid free play hands them.
+INSTRUCTIONAL_CAPACITIES[INSTRUCTIONAL_FINAL_DAY] = dict(STANDARD_CAPACITIES)
+
 _DISPATCHABLE = ["nuclear", "coal", "gas", "peaker", "hydro"]
 
 
@@ -164,6 +179,8 @@ class RunConfig:
     # Instructional Mode only: day -> source keys available that day. None means
     # every source is available from the start, which is every other mode.
     unlocks: Optional[dict] = None
+    # Instructional Mode only: day -> {source_key: max MW} for that day.
+    day_capacities: Optional[dict] = None
 
     @property
     def date_label(self) -> str:
@@ -181,6 +198,14 @@ class RunConfig:
         if day in self.unlocks:
             return self.unlocks[day]
         return self.unlocks[max(self.unlocks)]
+
+    def capacities_for_day(self, day: int):
+        """Per-day capacities, or None when the run uses one fixed fleet."""
+        if not self.day_capacities:
+            return None
+        if day in self.day_capacities:
+            return self.day_capacities[day]
+        return self.day_capacities[max(self.day_capacities)]
 
 
 def make_standard(date: Optional[_dt.date] = None, difficulty_key: str = "moderate") -> RunConfig:
@@ -211,6 +236,8 @@ def make_instructional(date: Optional[_dt.date] = None) -> RunConfig:
     """
     date = date or _dt.date.today()
     dmul, smul = _SEASON.get(date.month, (1.0, 1.0))
+    # Union of every day's fleet, so each source exists from the start; the
+    # per-day table below is what actually sets its capacity each morning.
     caps = dict(STANDARD_CAPACITIES)
     caps["generic"] = GENERIC_MAX_MW
     return RunConfig(
@@ -223,6 +250,7 @@ def make_instructional(date: Optional[_dt.date] = None) -> RunConfig:
         season_solar_scale=smul, data_source="synthetic",
         events_enabled=False,          # per-day; see INSTRUCTIONAL_EVENTS_FROM_DAY
         unlocks=INSTRUCTIONAL_UNLOCKS,
+        day_capacities=INSTRUCTIONAL_CAPACITIES,
     )
 
 

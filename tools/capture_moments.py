@@ -48,33 +48,37 @@ def _build():
     import main
     import scenarios
     from game_state import GameState
-    from ui.spigot_panel import SpigotPanel
     from ui.demand_chart import DemandChart
-    from ui.city_grid import CityGrid
+    from ui.iso_city import IsoCity
+    from ui.plant_pins import PlantPins, strict_above_keys_for_zoom
     from ui.speed_control import SpeedControl
-    from ui.pipes import PipeSystem
-    from ui.hud import HUD
-    from ui.sky import SkyLayer
+    from ui.hud import HUD, hud_panel_rects
+    from ui.atmosphere import AtmosphereLayer
     from ui.day_panel import DayCompletePanel
     from ui.menu import MenuSystem
     from audio import AudioManager
 
     f = _fonts()
-    spigot_rect, city_rect, chart_rect, readout_rect = main.compute_layout(W, H)
+    city_rect, chart_rect, readout_rect, hud_h = main.compute_layout(W, H)
+    hud_panels = hud_panel_rects(W, H)
     w = {
         "main": main,
         "scenarios": scenarios,
         "GameState": GameState,
-        "spigot_rect": spigot_rect,
         "city_rect": city_rect,
+        "chart_rect": chart_rect,
         "readout_rect": readout_rect,
-        "spigot_panel": SpigotPanel(spigot_rect, f["font"], f["font_small"], f["font_bold"]),
+        "hud_h": hud_h,
+        "hud_panels": hud_panels,
         "demand_chart": DemandChart(chart_rect, f["font_small"]),
-        "city_grid": CityGrid(f["font_small"], f["font"]),
-        "speed_control": SpeedControl((24, 96), f["font_small"], f["font"]),
-        "pipes": PipeSystem(),
+        "city": IsoCity(f["font_small"], f["font"]),
+        "plant_pins": PlantPins(f["font"], f["font_small"], f["font_bold"]),
+        "strict_above_keys_for_zoom": strict_above_keys_for_zoom,
+        "speed_control": SpeedControl((hud_panels["left"].left + 10,
+                                        hud_panels["left"].top + 60),
+                                       f["font_small"], f["font"]),
         "hud": HUD(f["font"], f["font_small"], f["font_big"], f["font_mono_big"]),
-        "sky": SkyLayer(),
+        "atmosphere": AtmosphereLayer(),
         "day_panel": DayCompletePanel(f["font"], f["font_small"], f["font_big"]),
         "menu": MenuSystem(f["font"], f["font_small"], f["font_big"], f["font_title"]),
         "audio": AudioManager(),
@@ -100,28 +104,30 @@ def _new_state(w, sim_hour=14.0, steps=120):
 
 def render_game(frame, st, w):
     """Replay main.py's in-game render stack onto `frame`."""
-    main = w["main"]
-    spigot_rect, city_rect = w["spigot_rect"], w["city_rect"]
+    city_rect = w["city_rect"]
 
-    w["sky"].draw(frame, frame.get_rect(), st.sim_hour, st.active_event)
-    w["city_grid"].draw(frame, city_rect, st)
-    pygame.draw.rect(frame, main.PANEL_COLOR, spigot_rect)
-    pygame.draw.line(frame, (10, 13, 20), (0, spigot_rect.bottom), (W, spigot_rect.bottom), 2)
-    w["spigot_panel"].draw(frame, st.active_sources, st.demand_level,
-                           show_price=st.show_economics)
-
-    source_x = w["spigot_panel"].source_x_centers(st.active_sources)
-    city_entry_y = city_rect.top + city_rect.height * main.PIPE_ENTRY_FRAC
-    w["pipes"].draw(frame, st.active_sources, source_x, spigot_rect.bottom,
-                    city_entry_y, city_rect)
+    w["main"].clear_frame(frame)
+    from ui.atmosphere import sample_atmosphere
+    environment = sample_atmosphere(
+        st.sim_hour, st.active_event.kind if st.active_event else None)
+    w["city"].draw(frame, city_rect, st, environment)
+    w["atmosphere"].draw(frame, city_rect, environment, 1 / 60.0)
     w["demand_chart"].draw(frame, st.sim_hour, st.sources, st.history, st.demand_mw,
                            st.demand_min_mw, st.demand_peak_mw)
-    w["city_grid"].draw_homes_label(frame, w["readout_rect"], st.homes_without_power,
-                                    st.homes_total)
-    w["hud"].draw(frame, st, main.TOP_HUD_HEIGHT)
+    w["city"].draw_homes_label(frame, w["readout_rect"], st.homes_without_power,
+                               st.homes_total)
+    pin_obstacles = (w["chart_rect"], w["readout_rect"], *w["hud_panels"].values())
+    strict_pins = w["strict_above_keys_for_zoom"](
+        w["city"].camera.zoom if w["city"].camera is not None else 1)
+    w["plant_pins"].draw(frame, st.active_sources, w["city"].plant_anchors(city_rect),
+                         pin_obstacles, city_rect,
+                         st.demand_level, show_price=st.show_economics,
+                         strict_above_keys=strict_pins)
+    w["hud"].draw(frame, st, w["hud_panels"])
     w["speed_control"].draw(frame, st)
     w["hud"].draw_audio_indicator(frame, w["audio"],
-                                  (24, w["speed_control"].bounds().bottom + 6))
+                                  (w["hud_panels"]["left"].left + 10,
+                                   w["speed_control"].bounds().bottom + 6))
 
 
 def capture(out_dir):
@@ -136,6 +142,10 @@ def capture(out_dir):
 
     def save(name):
         pygame.image.save(frame, str(out_dir / f"{name}.png"))
+
+    def settle(st, frames=24):
+        for _ in range(frames):
+            render_game(frame, st, w)
 
     # --- menu screens ---
     menu = w["menu"]
@@ -193,7 +203,53 @@ def capture(out_dir):
     w["hud"].draw_game_over(frame, st3)
     save("10_game_over")
 
-    print(f"captured 10 moments to {out_dir}")
+    # --- regional stage / LOD review matrix ---
+    st4 = _new_state(w)
+    render_game(frame, st4, w)  # ensure the region and camera exist
+    for number, zoom in enumerate((1, 2, 4), 11):
+        w["city"].camera.set_zoom(zoom, w["city_rect"].center,
+                                  w["city_rect"], w["city"]._world_rect)
+        settle(st4)
+        save(f"{number:02d}_zoom_{zoom}x_day")
+
+    w["city"].camera.set_zoom(1, w["city_rect"].center,
+                              w["city_rect"], w["city"]._world_rect)
+    for hour, name in ((5.5, "15_region_dawn"), (22.0, "16_region_night")):
+        st4.sim_hour = hour
+        settle(st4)
+        save(name)
+
+    st4.sim_hour = 14.0
+    for kind, name in (("RAIN", "17_weather_rain"),
+                       ("SNOW", "18_weather_snow"),
+                       ("WIND_GUST", "19_weather_wind"),
+                       ("HEAT_WAVE", "20_weather_heat")):
+        st4.active_event = game_state._make_event(kind, st4.sources)
+        settle(st4)
+        save(name)
+    st4.active_event = None
+
+    # Populate the delivery chain's pulses, then frame one plant and the city.
+    st4.sim_hour = 14.0
+    w["city"].camera.set_zoom(4, w["city_rect"].center,
+                              w["city_rect"], w["city"]._world_rect)
+    gas_site = next((site for site in w["city"]._plants if site.key == "gas"), None)
+    if gas_site:
+        w["city"].camera.center = [gas_site.sx + w["city"]._origin[0],
+                                    gas_site.sy + w["city"]._origin[1]]
+        w["city"].camera.clamp(w["city_rect"], w["city"]._world_rect)
+    settle(st4, 90)
+    save("21_delivery_chain_close")
+
+    gas = next((source for source in st4.sources if source.key == "gas"), None)
+    if gas:
+        gas.set_handle(0.0)
+        for _ in range(180):
+            st4.update(1 / 60.0)
+    settle(st4, 45)
+    save("22_offline_plant_flow")
+
+    print(f"captured 22 moments to {out_dir}")
 
 
 def main():

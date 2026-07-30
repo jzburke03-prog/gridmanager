@@ -21,29 +21,7 @@ import pygame
 # energy_grid_game/ui/assets.py -> repo root -> assets
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets"
 
-# source key -> tech sprite base name (assets/tech/<name>_frame_0N.png)
 OPERATOR = "question_mark_operator"
-
-TECH_BY_SOURCE = {
-    "nuclear": "nuclear_power",
-    "coal": "coal_power",
-    "gas": "natural_gas_combined_cycle",
-    "peaker": "natural_gas_peaker",
-    "solar": "solar_power",
-    "wind": "wind_power",
-    "hydro": "hydroelectric_power",
-    # Instructional Day 1's anonymous "Electricity" valve: the question-mark
-    # plate is exactly right for a source deliberately not yet identified.
-    "generic": OPERATOR,
-}
-
-
-def tech_for_source(key):
-    """Sprite name for a source key, falling back to the question-mark plate.
-
-    Never raises: a source without artwork should draw as unknown, not take the
-    whole panel down."""
-    return TECH_BY_SOURCE.get(key, OPERATOR)
 
 _raw_cache = {}      # relpath -> Surface (convert_alpha, uncropped)
 _scaled_cache = {}   # (relpath, w, h, smooth) -> Surface
