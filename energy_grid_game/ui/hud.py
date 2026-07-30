@@ -133,7 +133,10 @@ class HUD:
 
         # Region/scenario run that fell back to synthetic curves: keep the
         # status visible after the launch flash message has faded.
-        if state.config.mode != "standard" and state.config.data_source == "synthetic":
+        # Instructional Mode is synthetic by design, not by fallback — warning
+        # about it would report a failure that never happened.
+        if (state.config.mode not in ("standard", "instructional")
+                and state.config.data_source == "synthetic"):
             synth_txt = self.font_small.render("SYNTHETIC DATA", True, (240, 200, 90))
             surface.blit(synth_txt, (dx, 21 + date_txt.get_height()
                                      + season_txt.get_height() + 2))
@@ -155,15 +158,17 @@ class HUD:
                                18 + score_label.get_height() + score_txt.get_height()
                                + delta_txt.get_height() + 6))
 
-        spent_label = self.font_small.render("TOTAL SPENT", True, DIM)
-        spent_txt = self.font.render(_format_money(state.total_cost), True, (240, 200, 90))
-        spent_y = 18 + score_label.get_height() + score_txt.get_height() + delta_txt.get_height() + hs_txt.get_height() + 14
-        surface.blit(spent_label, (w - spent_label.get_width() - 24, spent_y))
-        spent_val_y = spent_y + spent_label.get_height() + 1
-        money_icon = assets.resource_icon("money", 16)
-        surface.blit(spent_txt, (w - spent_txt.get_width() - 24, spent_val_y))
-        surface.blit(money_icon, (w - spent_txt.get_width() - 24 - money_icon.get_width() - 5,
-                                  spent_val_y + (spent_txt.get_height() - 16) // 2))
+        # Instructional Day 1 teaches balance alone — no price, no spend.
+        if state.show_economics:
+            spent_label = self.font_small.render("TOTAL SPENT", True, DIM)
+            spent_txt = self.font.render(_format_money(state.total_cost), True, (240, 200, 90))
+            spent_y = 18 + score_label.get_height() + score_txt.get_height() + delta_txt.get_height() + hs_txt.get_height() + 14
+            surface.blit(spent_label, (w - spent_label.get_width() - 24, spent_y))
+            spent_val_y = spent_y + spent_label.get_height() + 1
+            money_icon = assets.resource_icon("money", 16)
+            surface.blit(spent_txt, (w - spent_txt.get_width() - 24, spent_val_y))
+            surface.blit(money_icon, (w - spent_txt.get_width() - 24 - money_icon.get_width() - 5,
+                                      spent_val_y + (spent_txt.get_height() - 16) // 2))
 
         # --- supply/demand fulfillment: the big top-center number now answers
         # "am I meeting demand right now", not the tank's slow-accumulating
@@ -215,11 +220,12 @@ class HUD:
         # dispatched right now — cheap when only baseload runs, expensive the
         # moment demand forces peaker gas online, same as a real merit-order
         # market clearing price
-        price_txt = self.font_small.render(
-            f"GRID PRICE ${state.grid_price:0.0f}/MWh  ·  {_format_money(state.cost_per_hour)}/hr",
-            True, _price_color(state.grid_price))
-        surface.blit(price_txt, (w // 2 - price_txt.get_width() // 2, y))
-        y += price_txt.get_height() + 10
+        if state.show_economics:
+            price_txt = self.font_small.render(
+                f"GRID PRICE ${state.grid_price:0.0f}/MWh  ·  {_format_money(state.cost_per_hour)}/hr",
+                True, _price_color(state.grid_price))
+            surface.blit(price_txt, (w // 2 - price_txt.get_width() // 2, y))
+            y += price_txt.get_height() + 10
 
         # The reservoir badge used to sit here. It was redundant with the big
         # ratio readout above (both answer "am I meeting demand"), and the tank

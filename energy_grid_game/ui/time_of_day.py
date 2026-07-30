@@ -3,9 +3,18 @@ never the real-world wall clock.
 
 Keyframe data is kept separate from any draw loop: get_time_of_day_colors() is a
 pure hour -> (top, bottom) function, and SkyGradient owns the cached surface.
+
+This module is the single source of truth for "what time does it look like" —
+both the sky and the overhead city read from it, so they cannot disagree.
 """
+import math
+
 import numpy as np
 import pygame
+
+# Sunrise / sunset, mirroring solar_availability. Owned here rather than in
+# ui/sky.py because the city view needs the same daylight window.
+DAY_START, DAY_END = 5.0, 20.0
 
 # (hour, top_color, bottom_color), ascending. Interpolation wraps 22:00 -> 00:00.
 KEYFRAMES = [
@@ -47,6 +56,20 @@ def get_time_of_day_colors(game_hour: float):
     into = (h - lo[0]) % _DAY
     t = _smoothstep(into / span)
     return _lerp(lo[1], hi[1], t), _lerp(lo[2], hi[2], t)
+
+
+def daylight(game_hour: float) -> float:
+    """0..1 sun elevation — how lit the ground is, peaking at solar noon.
+
+    Deliberately not derived from the keyframe colours: dawn and dusk are warm,
+    high-luminance skies (05:00's bottom colour is a bright red) while the sun is
+    still on the horizon, so colour brightness reads 05:00 as nearly midday. Sun
+    position is the honest signal.
+    """
+    h = game_hour % _DAY
+    if not (DAY_START <= h < DAY_END):
+        return 0.0
+    return math.sin(math.pi * (h - DAY_START) / (DAY_END - DAY_START))
 
 
 class SkyGradient:

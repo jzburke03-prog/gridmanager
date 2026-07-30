@@ -19,9 +19,26 @@ from typing import Optional
 
 import eia
 import noaa
+from sources.generic import GENERIC_MAX_MW
 
 SOURCE_KEYS = ["nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"]
 DAY_START_HOUR = 4  # the sim day begins at 04:00, so seed from that data hour
+
+# Instructional Mode: which sources the player has on each day (SPEC-1.1 §3.2).
+# Cumulative by construction — each day's set is the whole fleet available that
+# day, not the delta — so GameState can gate straight off it without bookkeeping.
+INSTRUCTIONAL_UNLOCKS = {
+    1: ["generic"],
+    2: ["gas", "peaker"],
+    3: ["gas", "peaker", "coal", "nuclear"],
+    4: ["gas", "peaker", "coal", "nuclear", "solar", "wind", "hydro"],
+}
+INSTRUCTIONAL_FINAL_DAY = max(INSTRUCTIONAL_UNLOCKS)
+
+# Days 1-3 run without weather: an unexplained heat wave while the player is
+# still learning what a demand curve is reads as noise, not as teaching. Day 4 is
+# where intermittency IS the lesson, so events come on with the renewables.
+INSTRUCTIONAL_EVENTS_FROM_DAY = 4
 
 
 # --------------------------------------------------------------------------
@@ -80,11 +97,18 @@ DIFFICULTY_ORDER = ["easy", "moderate", "hard", "expert"]
 STANDARD_DEMAND_PEAK_MW = 1000.0
 STANDARD_DEMAND_MIN_MW = 430.0
 
-# Rough national capacity mix scaled to a ~1000 MW-peak grid. _ensure_playable
-# guarantees the dispatchable subset can actually cover peak demand.
+# Rough national capacity mix scaled to a ~1000 MW-peak grid, 1750 MW total
+# (SPEC-1.1 §2.1). Sized so _ensure_playable never has to fire: firm capacity is
+# 1350 MW against a worst-case (July) requirement of 1160 * 1.15 = 1334 MW, so
+# the table below is exactly what a Standard run loads.
+#
+# That clears by only 16 MW. Raise the July _SEASON multiplier past ~1.17, raise
+# the 1.15 headroom in _ensure_playable, or cut firm capacity, and it starts
+# silently padding gas again — at which point these numbers stop being true.
+# test_capacities.py guards the margin.
 STANDARD_CAPACITIES = {
-    "nuclear": 110.0, "coal": 175.0, "gas": 560.0, "peaker": 45.0,
-    "solar": 130.0, "wind": 150.0, "hydro": 100.0,
+    "nuclear": 150.0, "coal": 250.0, "gas": 750.0, "peaker": 50.0,
+    "solar": 175.0, "wind": 225.0, "hydro": 150.0,
 }
 
 # Seasonal shaping for the synthetic Standard grid (no real data to lean on).
@@ -117,7 +141,7 @@ def _ensure_playable(caps: dict, demand_peak: float) -> dict:
 # --------------------------------------------------------------------------
 @dataclass
 class RunConfig:
-    mode: str                       # "standard" | "region" | "scenario"
+    mode: str                       # "standard" | "region" | "scenario" | "instructional"
     label: str
     date: _dt.date
     difficulty: Difficulty
@@ -137,10 +161,26 @@ class RunConfig:
     forced_event_kinds: Optional[list] = None  # event kinds the real day favors
     weather_source: str = "synthetic"      # "noaa" | "cache" | "synthetic"
     events_enabled: bool = True            # title-screen toggle: random events on/off
+    # Instructional Mode only: day -> source keys available that day. None means
+    # every source is available from the start, which is every other mode.
+    unlocks: Optional[dict] = None
 
     @property
     def date_label(self) -> str:
         return self.date.strftime("%d %b %Y")
+
+    @property
+    def is_instructional(self) -> bool:
+        return self.mode == "instructional"
+
+    def sources_for_day(self, day: int):
+        """Source keys the player can see and touch on `day`. Past the last
+        scripted day the whole fleet stays unlocked."""
+        if not self.unlocks:
+            return None            # no gating
+        if day in self.unlocks:
+            return self.unlocks[day]
+        return self.unlocks[max(self.unlocks)]
 
 
 def make_standard(date: Optional[_dt.date] = None, difficulty_key: str = "moderate") -> RunConfig:
@@ -158,6 +198,31 @@ def make_standard(date: Optional[_dt.date] = None, difficulty_key: str = "modera
         mode="standard", label="Standard Grid", date=date, difficulty=diff,
         demand_peak_mw=peak, demand_min_mw=dmin, capacities=caps,
         start_mix=start_mix, season_solar_scale=smul, data_source="synthetic",
+    )
+
+
+def make_instructional(date: Optional[_dt.date] = None) -> RunConfig:
+    """The four-day guided grid (SPEC-1.1 §3).
+
+    Standard's capacities and demand curve, on Easy, with the fleet revealed a
+    day at a time. Everything starts shut: Day 1 is a single generic valve at
+    zero, and each later day's new plants arrive off so the player opens them
+    deliberately rather than inheriting a running grid they didn't build.
+    """
+    date = date or _dt.date.today()
+    dmul, smul = _SEASON.get(date.month, (1.0, 1.0))
+    caps = dict(STANDARD_CAPACITIES)
+    caps["generic"] = GENERIC_MAX_MW
+    return RunConfig(
+        mode="instructional", label="Instructional", date=date,
+        difficulty=DIFFICULTIES["easy"],
+        demand_peak_mw=STANDARD_DEMAND_PEAK_MW * dmul,
+        demand_min_mw=STANDARD_DEMAND_MIN_MW * dmul,
+        capacities=caps,
+        start_mix={k: 0.0 for k in SOURCE_KEYS + ["generic"]},
+        season_solar_scale=smul, data_source="synthetic",
+        events_enabled=False,          # per-day; see INSTRUCTIONAL_EVENTS_FROM_DAY
+        unlocks=INSTRUCTIONAL_UNLOCKS,
     )
 
 

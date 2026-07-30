@@ -49,7 +49,6 @@ def _build():
     import scenarios
     from game_state import GameState
     from ui.spigot_panel import SpigotPanel
-    from ui.demand_box import DemandBox
     from ui.demand_chart import DemandChart
     from ui.city_grid import CityGrid
     from ui.speed_control import SpeedControl
@@ -61,16 +60,15 @@ def _build():
     from audio import AudioManager
 
     f = _fonts()
-    spigot_rect, box_rect, chart_rect, city_rect = main.compute_layout(W, H)
+    spigot_rect, city_rect, chart_rect, readout_rect = main.compute_layout(W, H)
     w = {
         "main": main,
         "scenarios": scenarios,
         "GameState": GameState,
         "spigot_rect": spigot_rect,
-        "box_rect": box_rect,
         "city_rect": city_rect,
+        "readout_rect": readout_rect,
         "spigot_panel": SpigotPanel(spigot_rect, f["font"], f["font_small"], f["font_bold"]),
-        "demand_box": DemandBox(center=(W // 2, box_rect.top + box_rect.height - 40)),
         "demand_chart": DemandChart(chart_rect, f["font_small"]),
         "city_grid": CityGrid(f["font_small"], f["font"]),
         "speed_control": SpeedControl((24, 96), f["font_small"], f["font"]),
@@ -103,36 +101,23 @@ def _new_state(w, sim_hour=14.0, steps=120):
 def render_game(frame, st, w):
     """Replay main.py's in-game render stack onto `frame`."""
     main = w["main"]
-    spigot_rect, box_rect = w["spigot_rect"], w["box_rect"]
+    spigot_rect, city_rect = w["spigot_rect"], w["city_rect"]
 
     w["sky"].draw(frame, frame.get_rect(), st.sim_hour, st.active_event)
-    w["city_grid"].draw_backdrop(frame, box_rect, st.fill_pct_display)
+    w["city_grid"].draw(frame, city_rect, st)
     pygame.draw.rect(frame, main.PANEL_COLOR, spigot_rect)
     pygame.draw.line(frame, (10, 13, 20), (0, spigot_rect.bottom), (W, spigot_rect.bottom), 2)
-    w["spigot_panel"].draw(frame, st.sources, st.demand_level)
+    w["spigot_panel"].draw(frame, st.active_sources, st.demand_level,
+                           show_price=st.show_economics)
 
-    # box fit-to-space (mirrors main.py:268-281)
-    max_v = main.MAX_BOX_HEIGHT_PX + main.MAX_BOX_FOOTPRINT_PX
-    max_h = main.MAX_BOX_FOOTPRINT_PX * 2 * main.ISO_HALF_WIDTH_RATIO
-    k_v = (box_rect.height - main.BOX_TOP_MARGIN - main.BOX_BOTTOM_MARGIN) / max_v
-    k_h = (box_rect.width - 2 * main.BOX_SIDE_MARGIN) / max_h
-    box_scale_ui = max(0.4, min(k_v, k_h, 3.0))
-    box_height_px = st.box_height_px * box_scale_ui
-    box_footprint_px = st.box_footprint_px * box_scale_ui
-    floor_y = box_rect.bottom - main.BOX_BOTTOM_MARGIN
-    w["demand_box"].center = (W // 2, floor_y - box_footprint_px / 2)
-    box_top_point = (w["demand_box"].center[0], w["demand_box"].center[1] - box_height_px)
-
-    clamped = max(0.0, min(1.0, st.fill_pct_display))
-    source_x = w["spigot_panel"].source_x_centers(st.sources)
-    w["pipes"].draw(frame, st.sources, source_x, spigot_rect.bottom, box_top_point,
-                    box_rect, box_height_px * (1.0 - clamped))
-    agitation = max(-1.5, min(1.5, (st.total_actual_mw - st.demand_mw) / 620.0))
-    w["demand_box"].draw(frame, box_height_px, box_footprint_px, st.fill_pct_display,
-                         agitation, main._supply_mix_tint(st.sources))
+    source_x = w["spigot_panel"].source_x_centers(st.active_sources)
+    city_entry_y = city_rect.top + city_rect.height * main.PIPE_ENTRY_FRAC
+    w["pipes"].draw(frame, st.active_sources, source_x, spigot_rect.bottom,
+                    city_entry_y, city_rect)
     w["demand_chart"].draw(frame, st.sim_hour, st.sources, st.history, st.demand_mw,
                            st.demand_min_mw, st.demand_peak_mw)
-    w["city_grid"].draw_homes_label(frame, w["city_rect"], st.homes_without_power, st.homes_total)
+    w["city_grid"].draw_homes_label(frame, w["readout_rect"], st.homes_without_power,
+                                    st.homes_total)
     w["hud"].draw(frame, st, main.TOP_HUD_HEIGHT)
     w["speed_control"].draw(frame, st)
     w["hud"].draw_audio_indicator(frame, w["audio"],

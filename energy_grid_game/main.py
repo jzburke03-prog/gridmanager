@@ -1,14 +1,13 @@
 """Grid Keeper: entry point and game loop."""
-import math
 import random
 import sys
 import pygame
 
 from game_state import (GameState, WINDOW_WIDTH, WINDOW_HEIGHT, FPS,
-                         MAX_BOX_HEIGHT_PX, MAX_BOX_FOOTPRINT_PX,
                          DEMAND_MIN_MW, DEMAND_PEAK_MW,
-                         SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD, MAX_FILL_PCT)
-from ui.demand_box import DemandBox
+                         SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD, MAX_FILL_PCT,
+                         instructional_complete, mark_instructional_complete)
+from ui import instructional_data
 from ui.demand_chart import DemandChart
 from ui.spigot_panel import SpigotPanel
 from ui.pipes import PipeSystem
@@ -27,47 +26,26 @@ PANEL_COLOR = (28, 35, 51)
 TOP_HUD_HEIGHT = 220
 SPIGOT_HEIGHT = 250
 
-# Demand chart is now a small inset card tucked in the corner (per the pipes
-# layout sketch) instead of a full-width strip, freeing the whole lower area
-# for the box + its feeder pipes.
+# Demand chart and the homes readout are small inset cards floating over the
+# city, which occupies the entire lower region on its own.
 CHART_W, CHART_H = 300, 170
 CHART_MARGIN = 18
 
-# Isometric box clearance: the box's on-screen footprint extends the vessel's
-# silhouette well past its "height" alone (its nearest corner drops another
-# footprint/2 px below center, and it spans footprint*sqrt(3) px wide), so the
-# scale-to-fit math has to account for the whole diamond, not just height vs.
-# box_rect.height, or the box clips into the panels above/below it.
-BOX_TOP_MARGIN = 20
-BOX_BOTTOM_MARGIN = 24
-BOX_SIDE_MARGIN = 40
-ISO_HALF_WIDTH_RATIO = math.cos(math.radians(30))  # x-extent of footprint_px per side
-
-
-def _supply_mix_tint(sources):
-    """Blend each source's color weighted by its share of current output, so
-    the tank visibly reflects what's actually filling it right now."""
-    total = sum(s.current_output_mw for s in sources)
-    if total <= 1.0:
-        return None
-    r = g = b = 0.0
-    for s in sources:
-        weight = s.current_output_mw / total
-        r += s.color[0] * weight
-        g += s.color[1] * weight
-        b += s.color[2] * weight
-    return (r, g, b)
+# How far into the city the trunk mains run before discharging. Has to sit well
+# below the manifold height pipes.py derives from the city rect, or the trunks
+# would route downward and then back up to meet it.
+PIPE_ENTRY_FRAC = 0.38
 
 
 def compute_layout(screen_w, screen_h):
     spigot_rect = pygame.Rect(0, TOP_HUD_HEIGHT, screen_w, SPIGOT_HEIGHT)
-    box_rect = pygame.Rect(0, spigot_rect.bottom, screen_w,
-                            max(160, screen_h - TOP_HUD_HEIGHT - SPIGOT_HEIGHT))
-    chart_rect = pygame.Rect(box_rect.left + CHART_MARGIN, box_rect.bottom - CHART_H - CHART_MARGIN,
+    city_rect = pygame.Rect(0, spigot_rect.bottom, screen_w,
+                             max(160, screen_h - TOP_HUD_HEIGHT - SPIGOT_HEIGHT))
+    chart_rect = pygame.Rect(city_rect.left + CHART_MARGIN, city_rect.bottom - CHART_H - CHART_MARGIN,
                               CHART_W, CHART_H)
-    city_rect = pygame.Rect(box_rect.right - CHART_W - CHART_MARGIN, box_rect.bottom - CHART_H - CHART_MARGIN,
-                             CHART_W, CHART_H)
-    return spigot_rect, box_rect, chart_rect, city_rect
+    readout_rect = pygame.Rect(city_rect.right - CHART_W - CHART_MARGIN,
+                                city_rect.bottom - CHART_H - CHART_MARGIN, CHART_W, CHART_H)
+    return spigot_rect, city_rect, chart_rect, readout_rect
 
 
 def _severity(fill_pct):
@@ -101,9 +79,8 @@ def main():
     # are stateless w.r.t. which grid is loaded, so they're built once.
     state = None
 
-    spigot_rect, box_rect, chart_rect, city_rect = compute_layout(WINDOW_WIDTH, WINDOW_HEIGHT)
+    spigot_rect, city_rect, chart_rect, readout_rect = compute_layout(WINDOW_WIDTH, WINDOW_HEIGHT)
     spigot_panel = SpigotPanel(spigot_rect, font, font_small, font_bold)
-    demand_box = DemandBox(center=(WINDOW_WIDTH // 2, box_rect.top + box_rect.height - 40))
     demand_chart = DemandChart(chart_rect, font_small)
     city_grid = CityGrid(font_small, font)
     speed_control = SpeedControl((24, 96), font_small, font)
@@ -117,13 +94,28 @@ def main():
     scene = "menu"   # "menu" | "game"
 
     # Latched once the player finishes or skips the tutorial, so it doesn't
-    # replay every time a new Standard game starts this session.
-    tutorial_completed = False
+    # replay every time a new Standard game starts this session. Someone who has
+    # already completed the four guided days starts latched: walking them through
+    # the Standard tutorial again would be condescending.
+    tutorial_completed = instructional_complete()
+    last_day = 1
+
+    def build_tutorial(cfg, day):
+        """The script for the current mode and day, or None when there is none."""
+        if cfg.is_instructional:
+            steps = instructional_data.DAYS.get(day)
+            if not steps:
+                return None
+            return TutorialManager(font, font_small, font, steps=steps,
+                                   conditions=instructional_data.CONDITIONS,
+                                   skip_label="SKIP DAY")
+        return TutorialManager(font, font_small, font)
 
     def start_game(cfg, fresh_tutorial=True):
         """Spin up a fresh session from a RunConfig chosen in the menu."""
-        nonlocal state, scene, tutorial, tutorial_completed
+        nonlocal state, scene, tutorial, tutorial_completed, last_day
         state = GameState(cfg)
+        last_day = state.day
         day_panel.reset()
         # Region/scenario runs are supposed to play on real EIA data; if the
         # fetch fell back to the synthetic grid, say so instead of silently
@@ -137,7 +129,11 @@ def main():
         # an R-key retry of the same grid never replays it.
         if tutorial.finished:
             tutorial_completed = True
-        if cfg.mode == "standard" and fresh_tutorial and not tutorial_completed:
+        if cfg.is_instructional:
+            # Every instructional day gets its own script, always — guidance is
+            # the entire point of the mode, so it is never latched off.
+            tutorial = build_tutorial(cfg, state.day) or tutorial
+        elif cfg.mode == "standard" and fresh_tutorial and not tutorial_completed:
             tutorial = TutorialManager(font, font_small, font)
         else:
             tutorial.close_for_retry()
@@ -163,7 +159,8 @@ def main():
     while running:
         dt = clock.tick(FPS) / 1000.0
 
-        tutorial_on = scene == "game" and state is not None and state.config.mode == "standard"
+        tutorial_on = (scene == "game" and state is not None
+                       and state.config.mode in ("standard", "instructional"))
 
         # Input priority: outcome screen > day panel > tutorial > gameplay. Once
         # a layer claims an event nothing below it sees that event at all.
@@ -225,11 +222,11 @@ def main():
                 elif speed_control.handle_mouse_down(event.pos, state):
                     audio.play("ui_click")
                 else:
-                    spigot_panel.handle_mouse_down(event.pos, state.sources)
+                    spigot_panel.handle_mouse_down(event.pos, state.active_sources)
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 spigot_panel.handle_mouse_up()
             elif event.type == pygame.MOUSEMOTION:
-                spigot_panel.handle_mouse_motion(event.pos, state.sources)
+                spigot_panel.handle_mouse_motion(event.pos, state.active_sources)
 
         # ---- MENU scene: update, maybe launch a game, draw, present ----
         if scene == "menu":
@@ -254,49 +251,26 @@ def main():
         # Recompute layout every frame from the actual surface size so resizing
         # or maximizing the window never leaves stale/mismatched panel rects.
         screen_w, screen_h = screen.get_size()
-        spigot_rect, box_rect, chart_rect, city_rect = compute_layout(screen_w, screen_h)
+        spigot_rect, city_rect, chart_rect, readout_rect = compute_layout(screen_w, screen_h)
         spigot_panel.rect = spigot_rect
         demand_chart.rect = chart_rect
 
         if frame.get_size() != (screen_w, screen_h):
             frame = pygame.Surface((screen_w, screen_h), depth=24)
 
-        # Fit-to-space scale: sized against the box's absolute MAX height/footprint
-        # (not the current instantaneous demand) so it never grows into a clip as
-        # demand rises later. Full iso vertical silhouette = height + the WHOLE
-        # footprint: the base's near corner hangs footprint/2 below center AND the
-        # top diamond's back corner rises footprint/2 above the height line.
-        max_vertical_span = MAX_BOX_HEIGHT_PX + MAX_BOX_FOOTPRINT_PX
-        max_horizontal_span = MAX_BOX_FOOTPRINT_PX * 2 * ISO_HALF_WIDTH_RATIO
-        k_vertical = (box_rect.height - BOX_TOP_MARGIN - BOX_BOTTOM_MARGIN) / max_vertical_span
-        k_horizontal = (box_rect.width - 2 * BOX_SIDE_MARGIN) / max_horizontal_span
-        box_scale_ui = max(0.4, min(k_vertical, k_horizontal, 3.0))
-
-        box_height_px = state.box_height_px * box_scale_ui
-        box_footprint_px = state.box_footprint_px * box_scale_ui
-
-        # Anchor the box to a fixed floor line so it grows upward/outward from
-        # a stable base rather than drifting as its footprint changes.
-        floor_y = box_rect.bottom - BOX_BOTTOM_MARGIN
-        demand_box.center = (screen_w // 2, floor_y - box_footprint_px / 2)
-        box_top_point = (demand_box.center[0], demand_box.center[1] - box_height_px)
-
         # Named screen regions: highlight targets for the tutorial, and the rects
         # overlays must not cover. Taken from the real layout so they stay correct
-        # through a resize instead of being guessed. The tank rect is the full
-        # isometric silhouette, not just the height.
-        tank_half_w = box_footprint_px * ISO_HALF_WIDTH_RATIO
+        # through a resize instead of being guessed.
         regions = {
             "supply_demand": pygame.Rect(screen_w // 2 - 190, 14, 380, 150),
             "spigot_panel": spigot_rect,
-            "gas_card": spigot_panel.card_rects(state.sources).get("gas"),
-            "tank": pygame.Rect(
-                demand_box.center[0] - tank_half_w,
-                demand_box.center[1] - box_height_px - box_footprint_px / 2,
-                tank_half_w * 2,
-                box_height_px + box_footprint_px,
-            ),
-            "city": city_rect,   # now the homes-without-power readout anchor
+            "gas_card": spigot_panel.card_rects(state.active_sources).get("gas"),
+            "city": city_rect,
+            # The dialogue box may sit over the city — it's the backdrop — but
+            # not over the readouts floating on it, so those are listed
+            # separately for the placement logic to avoid.
+            "chart": chart_rect,
+            "readout": readout_rect,
             "speed_control": speed_control.bounds(),
         }
 
@@ -306,6 +280,24 @@ def main():
         if tutorial_on and not (state.game_over or day_panel.blocks_gameplay()):
             tutorial.update(dt, state, regions, audio)
         day_panel.update(dt, state, regions, audio)
+
+        # Confirming the final instructional day ends the mode: record the
+        # completion and go back to the menu rather than rolling into a Day 5.
+        if day_panel.take_return_to_menu():
+            mark_instructional_complete()
+            tutorial_completed = True
+            scene = "menu"
+            menu.open_menu()
+            audio.unduck_music()
+            continue
+
+        # A day rolled over: swap in that day's script.
+        if state.day != last_day:
+            last_day = state.day
+            if state.config.is_instructional:
+                next_script = build_tutorial(state.config, state.day)
+                if next_script is not None:
+                    tutorial = next_script
 
         # --- audio cues, fired on state transitions (never per frame) ---
         audio.play_music("gameplay")  # idempotent: a no-op once it's playing
@@ -322,39 +314,26 @@ def main():
         was_celebrating = celebrating
 
         # ---- render, back to front ----
-        # 1. time-of-day background + city skyline behind the world (its lit
-        #    windows track supply, so the glow reads as an at-a-glance status)
+        # 1. time-of-day sky, then the overhead city filling the whole lower
+        #    region: how much of it is lit IS the supply/demand readout.
         sky.draw(frame, frame.get_rect(), state.sim_hour, state.active_event)
-        city_grid.draw_backdrop(frame, box_rect, state.fill_pct_display)
+        city_grid.draw(frame, city_rect, state)
 
         # 2. world / game objects
         pygame.draw.rect(frame, PANEL_COLOR, spigot_rect)
         pygame.draw.line(frame, (10, 13, 20), (0, spigot_rect.bottom), (screen_w, spigot_rect.bottom), 2)
-        spigot_panel.draw(frame, state.sources, state.demand_level)
+        spigot_panel.draw(frame, state.active_sources, state.demand_level,
+                          show_price=state.show_economics)
 
-        # feeder pipes: drawn before the box so their ends tuck behind the rim.
-        # Droplets keep falling past the rim down to the CURRENT water surface
-        # (not a fixed point), so they visibly land wherever the tank's fill
-        # level actually is instead of splashing in empty space near the top.
-        clamped_fill = max(0.0, min(1.0, state.fill_pct_display))
-        water_drop_px = box_height_px * (1.0 - clamped_fill)
-        source_x = spigot_panel.source_x_centers(state.sources)
-        pipes.draw(frame, state.sources, source_x, spigot_rect.bottom, box_top_point, box_rect,
-                  water_drop_px)
+        # trunk mains: drawn over the city, discharging part-way into it
+        source_x = spigot_panel.source_x_centers(state.active_sources)
+        city_entry_y = city_rect.top + city_rect.height * PIPE_ENTRY_FRAC
+        pipes.draw(frame, state.active_sources, source_x, spigot_rect.bottom, city_entry_y, city_rect)
 
-        # net grid imbalance drives how agitated the water surface is
-        agitation = max(-1.5, min(1.5, (state.total_actual_mw - state.demand_mw) / 620.0))
-        tint_rgb = _supply_mix_tint(state.sources)
-
-        # 3. water tank and city graphics
-        demand_box.draw(frame, box_height_px, box_footprint_px,
-                        state.fill_pct_display, agitation, tint_rgb)
+        # 3. inset cards floating over the city
         demand_chart.draw(frame, state.sim_hour, state.sources, state.history,
                           state.demand_mw, state.demand_min_mw, state.demand_peak_mw)
-
-        # 4. world-attached labels (homes readout anchored where the old city
-        #    corner panel sat, now that the city is the full backdrop)
-        city_grid.draw_homes_label(frame, city_rect, state.homes_without_power, state.homes_total)
+        city_grid.draw_homes_label(frame, readout_rect, state.homes_without_power, state.homes_total)
 
         # 5. normal HUD
         hud.draw(frame, state, TOP_HUD_HEIGHT)

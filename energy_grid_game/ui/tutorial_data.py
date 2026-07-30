@@ -60,14 +60,14 @@ STEPS = [
         ],
     },
     {
-        "id": "tank",
+        "id": "city",
         "portrait": portraits.POINTING,
         "speaker": SPEAKER,
-        "highlight": "tank",
+        "highlight": "city",
         "lines": [
-            "That tank is the same balance, in water. Level holds when supply meets demand.",
-            "Let it run dry and the city browns out.",
-            "Overfill it and you're cooking the hardware. Keep the rim green.",
+            "That's the city, straight down. Every lit block is a block we're carrying.",
+            "Dark at this hour is normal — nobody's up yet. Watch it wake as the day comes.",
+            "Come up short and blocks drop, outskirts first. Push too much and it burns.",
         ],
     },
     {

@@ -39,7 +39,7 @@ def wind_availability(t: float) -> float:
 class WindSource(EnergySource):
     def __init__(self):
         super().__init__(
-            name="Wind", key="wind", max_output_mw=200,
+            name="Wind", key="wind", max_output_mw=225,
             ramp_up_latency=2, ramp_down_latency=2,
             min_stable_output=0.0, can_shut_down=True,
             availability_fn=wind_availability,

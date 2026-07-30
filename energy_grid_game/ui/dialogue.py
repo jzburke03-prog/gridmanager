@@ -61,11 +61,20 @@ def get_dialogue_rect(screen_rect, portrait_size, blocked_rects, box_size, margi
     bottom = screen_rect.bottom - margin - cluster_h
     top = screen_rect.top + margin
 
+    centre = screen_rect.centerx - cluster_w // 2
+    mid_y = screen_rect.centery - cluster_h // 2
+
+    # Centre slots come first now that the city — not a tank — fills the lower
+    # half: it is a backdrop the box may freely sit on, and it is the only large
+    # clear area. Without these the box was forced into a corner and routinely
+    # covered the very readout its own highlight was pointing at.
     candidates = [
-        pygame.Rect(left, bottom, cluster_w, cluster_h),   # lower-left
-        pygame.Rect(right, bottom, cluster_w, cluster_h),  # lower-right
-        pygame.Rect(left, top, cluster_w, cluster_h),      # upper-left
-        pygame.Rect(right, top, cluster_w, cluster_h),     # upper-right
+        pygame.Rect(centre, bottom, cluster_w, cluster_h),  # lower-centre
+        pygame.Rect(left, bottom, cluster_w, cluster_h),    # lower-left
+        pygame.Rect(right, bottom, cluster_w, cluster_h),   # lower-right
+        pygame.Rect(centre, mid_y, cluster_w, cluster_h),   # mid-centre
+        pygame.Rect(left, top, cluster_w, cluster_h),       # upper-left
+        pygame.Rect(right, top, cluster_w, cluster_h),      # upper-right
     ]
 
     blocked = [r for r in blocked_rects if r is not None]
@@ -142,6 +151,7 @@ class DialogueBox:
         self.rect = pygame.Rect(0, 0, 0, 0)        # box only
         self.cluster_rect = pygame.Rect(0, 0, 0, 0)  # box + portrait: blocks clicks
         self.skip_rect = pygame.Rect(0, 0, 0, 0)
+        self.learn_rect = pygame.Rect(0, 0, 0, 0)
         self._wrapped = []
         self._wrap_key = None
 
@@ -180,7 +190,7 @@ class DialogueBox:
         return max(FRAME_CORNER_MIN, min(FRAME_CORNER_MAX, self.rect.height // 9))
 
     def draw(self, surface, portrait, p_rect, speaker, typed: TypewriterText,
-             hint=None, skip_label=None, blink=True):
+             hint=None, skip_label=None, blink=True, learn_label=None):
         corner = self._corner()
         surface.blit(portraits.nine_slice(portraits.CHATBOX, self.rect.size, corner),
                      self.rect.topleft)
@@ -220,6 +230,20 @@ class DialogueBox:
                                self.skip_rect.centery - txt.get_height() // 2))
         else:
             self.skip_rect = pygame.Rect(0, 0, 0, 0)
+
+        # Two-pager button, mirroring SKIP at the other corner. Drawn only when
+        # a caller passes a label — a step with no two-pager written yet gets no
+        # button at all, rather than a dead or greyed-out one.
+        if learn_label:
+            txt = self.font_small.render(learn_label, True, (226, 214, 150))
+            self.learn_rect = pygame.Rect(0, 0, txt.get_width() + 20, 22)
+            self.learn_rect.topleft = (self.rect.left, self.rect.top - 26)
+            pygame.draw.rect(surface, (26, 24, 16), self.learn_rect, border_radius=4)
+            pygame.draw.rect(surface, (180, 160, 90), self.learn_rect, width=1, border_radius=4)
+            surface.blit(txt, (self.learn_rect.centerx - txt.get_width() // 2,
+                               self.learn_rect.centery - txt.get_height() // 2))
+        else:
+            self.learn_rect = pygame.Rect(0, 0, 0, 0)
 
     def _blink_on(self):
         return (pygame.time.get_ticks() // 500) % 2 == 0

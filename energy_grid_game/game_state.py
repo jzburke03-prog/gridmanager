@@ -10,6 +10,7 @@ from demand_curve import DemandProfile
 from physics.water_sim import track_fill
 from pricing import EVENT_SCARCITY_MULTIPLIER
 from sources.base_source import SourceStatus, clamp
+from sources.generic import GenericSource
 from sources.nuclear import NuclearSource
 from sources.coal import CoalSource
 from sources.natural_gas import GasSource
@@ -22,13 +23,7 @@ WINDOW_WIDTH = 1400
 WINDOW_HEIGHT = 900
 FPS = 60
 GAME_DAY_REAL_SECONDS = 120       # How long 1 in-game day lasts
-MAX_BOX_HEIGHT_PX = 300
-MIN_BOX_HEIGHT_PX = 100
-MAX_BOX_FOOTPRINT_PX = 300
-MIN_BOX_FOOTPRINT_PX = 130
-BOX_LERP_SPEED = 0.06             # per-second smoothing factor
 WATER_LERP_SPEED = 1.2            # per-second smoothing factor
-TOTAL_GRID_CAPACITY_MW = 1725      # sum of all max source outputs
 
 # Default demand envelope (Standard grid). Per-run values live on the GameState
 # instance (state.demand_min_mw / demand_peak_mw), set from the RunConfig.
@@ -144,20 +139,45 @@ _TEMP_DIURNAL_SWING_F = 10.0   # +/- around the daily mean, min ~03:00, max ~15:
 _TEMP_TRACK_SPEED = 0.5        # per-second smoothing toward the target temperature
 
 
-def load_high_score() -> float:
+def _load_progress() -> dict:
+    """Everything persisted between sessions. One small file, read whole."""
     try:
         with open(HIGHSCORE_PATH) as f:
-            return float(json.load(f).get("high_score", 0.0))
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
+        return {}
+
+
+def _save_progress(**updates):
+    """Read-modify-write: the file holds more than one key now, so writing a
+    fresh dict would silently drop whichever key the caller didn't set."""
+    data = _load_progress()
+    data.update(updates)
+    try:
+        with open(HIGHSCORE_PATH, "w") as f:
+            json.dump(data, f)
+    except OSError:
+        pass  # a failed save should never crash the game loop
+
+
+def load_high_score() -> float:
+    try:
+        return float(_load_progress().get("high_score", 0.0))
+    except (TypeError, ValueError):
         return 0.0
 
 
 def save_high_score(score: float):
-    try:
-        with open(HIGHSCORE_PATH, "w") as f:
-            json.dump({"high_score": score}, f)
-    except OSError:
-        pass  # a failed save should never crash the game loop
+    _save_progress(high_score=score)
+
+
+def instructional_complete() -> bool:
+    return bool(_load_progress().get("instructional_complete", False))
+
+
+def mark_instructional_complete():
+    _save_progress(instructional_complete=True)
 
 
 def score_delta(fill_pct: float, difficulty) -> float:
@@ -210,10 +230,6 @@ class GameState:
         self.demand_min_mw = cfg.demand_min_mw
         self.demand_profile = DemandProfile(cfg.demand_hourly)
         self.demand_level = self.demand_profile.level_at(self.sim_hour)
-
-        self.box_scale = 0.0             # smoothed 0..1 size fraction (drives height AND footprint)
-        self.box_height_px = MIN_BOX_HEIGHT_PX
-        self.box_footprint_px = MIN_BOX_FOOTPRINT_PX
 
         self.fill_pct = 0.30
         self.fill_pct_display = 0.30
@@ -272,6 +288,10 @@ class GameState:
             NuclearSource(), CoalSource(), GasSource(), PeakerSource(),
             SolarSource(), WindSource(), HydroSource(),
         ]
+        # The generic Day 1 valve only exists in Instructional Mode; adding it
+        # anywhere else would put an eighth handle on the panel.
+        if cfg.is_instructional:
+            self.sources.insert(0, GenericSource())
         self._apply_config(cfg)
 
     def _apply_config(self, cfg):
@@ -311,6 +331,41 @@ class GameState:
         idx = SPEED_STEPS.index(self.game_speed) if self.game_speed in SPEED_STEPS else 2
         self.game_speed = SPEED_STEPS[max(idx - 1, 0)]
 
+    # -- Instructional Mode gating ----------------------------------------
+    @property
+    def active_sources(self):
+        """Sources the player can see and touch today.
+
+        Only ever narrower than self.sources, and only in Instructional Mode.
+        self.sources stays complete for everyone: history, pricing and totals all
+        iterate it, and a locked plant sits at 0 MW and contributes nothing, so
+        gating at the render/input boundary keeps the simulation untouched.
+        """
+        keys = self.config.sources_for_day(self.day)
+        if keys is None:
+            return self.sources
+        allowed = set(keys)
+        return [s for s in self.sources if s.key in allowed]
+
+    @property
+    def show_economics(self) -> bool:
+        """Day 1 teaches balance alone; price and spend arrive with gas on Day 2."""
+        return not self.config.is_instructional or self.day >= 2
+
+    @property
+    def can_fail(self) -> bool:
+        """A player cannot lose on their first day. Days 1-3 of Instructional
+        Mode are unloseable, which also makes the Day 3 nuclear lesson teachable:
+        drop nuclear too hard, watch the SCRAM, read about it in the summary —
+        rather than losing the session to it."""
+        return not (self.config.is_instructional and self.day < 4)
+
+    @property
+    def events_active(self) -> bool:
+        if self.config.is_instructional:
+            return self.day >= scenarios.INSTRUCTIONAL_EVENTS_FROM_DAY
+        return self.config.events_enabled
+
     @property
     def homes_total(self) -> float:
         return self.demand_mw * HOUSEHOLDS_PER_MW
@@ -338,16 +393,34 @@ class GameState:
         return GAME_DAY_REAL_SECONDS / 24.0
 
     def _trigger_game_over(self, reason: str):
-        if self.game_over:
+        if self.game_over or not self.can_fail:
             return
         self.game_over = True
         self.game_over_reason = reason
         self.persist_high_score()
 
+    @property
+    def is_final_day(self) -> bool:
+        """Instructional Mode ends after its last scripted day rather than
+        rolling into a Day 5."""
+        return (self.config.is_instructional
+                and self.day >= scenarios.INSTRUCTIONAL_FINAL_DAY)
+
     def start_next_day(self):
         """Initialise the next day. Called exactly once per confirmed rollover by
         the day panel's ADVANCING_DAY phase."""
+        retiring = {s.key for s in self.active_sources}
         self.day += 1
+        # Any source leaving the active set must be forced to zero. The Day 1
+        # generic valve otherwise keeps generating behind the panel it just
+        # vanished from, and Day 2 opens with supply mysteriously doubled.
+        still_active = self.config.sources_for_day(self.day)
+        if still_active is not None:
+            for s in self.sources:
+                if s.key in retiring and s.key not in still_active:
+                    s.requested_pct = 0.0
+                    s.actual_pct = 0.0
+                    s.status = SourceStatus.OFFLINE
         self.date = self.date + datetime.timedelta(days=1)
         self.day_hours = 0.0
         self.day_complete = False
@@ -393,18 +466,13 @@ class GameState:
 
         self._update_pricing(dt)
 
-        # box size (height AND footprint) follows demand, animated as one uniform scale factor
-        # so the vessel grows outward in x/y/z together rather than just stretching taller.
-        self.box_scale += (self.demand_level - self.box_scale) * min(1.0, BOX_LERP_SPEED * 60 * dt)
-        self.box_height_px = MIN_BOX_HEIGHT_PX + self.box_scale * (MAX_BOX_HEIGHT_PX - MIN_BOX_HEIGHT_PX)
-        self.box_footprint_px = MIN_BOX_FOOTPRINT_PX + self.box_scale * (
-            MAX_BOX_FOOTPRINT_PX - MIN_BOX_FOOTPRINT_PX)
-
-        # The box directly tracks the LIVE supply/demand ratio (smoothed only
+        # fill_pct directly tracks the LIVE supply/demand ratio (smoothed only
         # enough to avoid jitter) rather than integrating surplus/deficit over
-        # time — a slow-draining buffer meant the box could stay flooded at
+        # time — a slow-draining buffer meant the reading could stay pinned at
         # 200% for minutes after supply had already dropped back to balanced,
         # completely decoupled from what the HUD's live ratio was showing.
+        # The 1.0 vessel is gone but this remains the hydraulic model the city
+        # view renders and the 1.2 transmission model will build on.
         self.fill_pct_prev = self.fill_pct
         self.fill_pct = track_fill(self.fill_pct, self.total_actual_mw, self.demand_mw,
                                     dt, FILL_TRACK_SPEED, MAX_FILL_PCT)
@@ -525,9 +593,10 @@ class GameState:
 
     def _update_events(self, dt: float):
         # Events can be switched off from the title screen for calm,
-        # demand-balancing-only play; with none ever spawned there is nothing
-        # to expire or revert, so a clean early return covers it.
-        if not self.config.events_enabled:
+        # demand-balancing-only play, and are off for Instructional days 1-3;
+        # with none ever spawned there is nothing to expire or revert, so a
+        # clean early return covers it.
+        if not self.events_active:
             return
         solar = next(s for s in self.sources if s.key == "solar")
         wind = next(s for s in self.sources if s.key == "wind")

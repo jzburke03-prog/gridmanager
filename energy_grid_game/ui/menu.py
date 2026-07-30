@@ -15,6 +15,7 @@ import threading
 
 import pygame
 
+import game_state
 import scenarios
 from ui import assets
 from ui import pixel_art as pa
@@ -56,6 +57,9 @@ _PARENT = {MODE: TITLE, FREEPLAY: MODE, SCENARIOS: MODE}
 _SCREEN_NAMES = {TITLE: "TITLE", MODE: "MODE", FREEPLAY: "FREE PLAY",
                  SCENARIOS: "SCENARIOS", FETCHING: "FETCHING"}
 
+# Instructional Mode has no configuration screen of its own — it launches
+# straight from MODE with a fixed grid — so it never becomes a `state`.
+
 
 class MenuSystem:
     def __init__(self, font, font_small, font_big, font_title):
@@ -78,6 +82,9 @@ class MenuSystem:
         self.cal_view = self.sel_date.replace(day=1)   # month shown by the calendar
         self._year_picker_open = False   # calendar header click -> pick a year fast
         self.events_enabled = True   # title-screen toggle: random grid events
+        # Persisted completion marker, re-read whenever the menu reopens so
+        # finishing a run updates the card without restarting the app.
+        self._instructional_done = game_state.instructional_complete()
 
         self._targets = []           # [(rect, action)] rebuilt every draw
         self._mouse = (0, 0)
@@ -101,6 +108,7 @@ class MenuSystem:
         self.state = self._launch_state if self._launch_state is not None else TITLE
         self.result_config = None
         self._pending = None
+        self._instructional_done = game_state.instructional_complete()
 
     def go_back(self) -> bool:
         """Step one screen up. Returns False when already at TITLE — the caller
@@ -171,6 +179,8 @@ class MenuSystem:
             self.cal_view = _MAX_DATE.replace(day=1)
         elif kind == "toggle_events":
             self.events_enabled = not self.events_enabled
+        elif kind == "start_instructional":
+            self._start_instructional()
         elif kind == "start_freeplay":
             self._start_freeplay()
         elif kind == "start_scenario":
@@ -185,6 +195,17 @@ class MenuSystem:
         self.cal_view = max(lo, min(hi, first))
 
     # -- start a run -------------------------------------------------------
+    def _start_instructional(self):
+        """Synthetic and fixed — no region, date, difficulty or network fetch.
+
+        _launch_state is MODE rather than a screen of its own: backing out of the
+        run has to land somewhere that exists, and Instructional has no
+        configuration screen to return to.
+        """
+        self._launch_state = MODE
+        self.result_config = scenarios.make_instructional()
+        self.active = False
+
     def _start_freeplay(self):
         self._launch_state = FREEPLAY
         opt = self.freeplay_options[self.sel_option]
@@ -256,14 +277,29 @@ class MenuSystem:
         w, h = surface.get_size()
         cx = w // 2
         self._header(surface, "SELECT MODE", None)
-        col_w, col_h, gap = 320, 224, 40
-        left = pygame.Rect(cx - col_w - gap // 2, h // 2 - col_h // 2, col_w, col_h)
-        right = pygame.Rect(cx + gap // 2, h // 2 - col_h // 2, col_w, col_h)
-        self._card(surface, left, "FREE PLAY", ACCENT,
+        col_w, col_h, gap = 300, 224, 34
+        top = h // 2 - col_h // 2
+        span = col_w * 3 + gap * 2
+        x0 = cx - span // 2
+        rects = [pygame.Rect(x0 + i * (col_w + gap), top, col_w, col_h) for i in range(3)]
+
+        done = self._instructional_done
+        self._card(surface, rects[0],
+                   "INSTRUCTIONAL" + ("  ✓" if done else ""), GOOD,
+                   ["Four guided days, one new",
+                    "idea at a time. Start here",
+                    "if you've never balanced",
+                    "a grid before."] if not done else
+                   ["Completed. Replay it any",
+                    "time — four guided days,",
+                    "one new idea at a time.",
+                    ""],
+                   ("start_instructional",), emblem="grid")
+        self._card(surface, rects[1], "FREE PLAY", ACCENT,
                    ["Pick any region and date.", "Real EIA grid data seeds",
                     "the day. Or play the national", "Standard grid."],
                    ("goto", FREEPLAY), emblem="grid")
-        self._card(surface, right, "SCENARIOS", ACCENT_WARM,
+        self._card(surface, rects[2], "SCENARIOS", ACCENT_WARM,
                    ["Relive historic moments of", "grid stress — winter storms,",
                     "heat waves, deep freezes.", "Can you keep the lights on?"],
                    ("goto", SCENARIOS), emblem="flame")

@@ -18,6 +18,8 @@ import pygame
 
 from ui import assets
 from ui.demand_chart import DemandChart, STACK_ORDER
+from ui.dialogue import wrap_text
+from ui.instructional_data import DAY_NOTES
 
 PANEL_BG = (22, 28, 44)
 PANEL_EDGE = (120, 132, 160)
@@ -53,7 +55,9 @@ class DayCompletePanel:
         self.phase = DayPhase.DAY_ACTIVE
         self.rect = pygame.Rect(0, 0, 0, 0)
         self.button_rect = pygame.Rect(0, 0, 0, 0)
+        self.return_to_menu = False   # set on confirming the final day
         self._day_label = ""
+        self._day_note = None    # instructional-only closing line
         # frozen reference to the completed day's GameState, captured on the
         # DAY_ACTIVE -> DAY_COMPLETE_PAUSED transition (the sim is frozen from
         # that point until the player confirms), plus a reusable large chart.
@@ -74,6 +78,8 @@ class DayCompletePanel:
             if state.day_complete and not state.game_over:
                 self.phase = DayPhase.DAY_COMPLETE_PAUSED
                 self._day_label = f"DAY {state.day} COMPLETE"
+                self._day_note = (DAY_NOTES.get(state.day)
+                                  if state.config.is_instructional else None)
                 # freeze a reference to this day's state for the summary; the
                 # completed day's demand shape seeds the chart's future preview
                 self._state = state
@@ -96,7 +102,20 @@ class DayCompletePanel:
             return  # already confirmed; ignore repeats
         if audio:
             audio.play("ui_click")
+        # Instructional Mode's last day is terminal: confirming returns to the
+        # menu instead of rolling into a day the script has nothing to say about.
+        if self._state is not None and self._state.is_final_day:
+            self.return_to_menu = True
+            self.phase = DayPhase.DAY_ACTIVE
+            return
         self.phase = DayPhase.ADVANCING_DAY
+
+    def take_return_to_menu(self) -> bool:
+        """One-shot: True once after the final day is confirmed."""
+        if not self.return_to_menu:
+            return False
+        self.return_to_menu = False
+        return True
 
     def handle_event(self, event, audio=None) -> bool:
         if not self.blocks_gameplay():
@@ -120,6 +139,7 @@ class DayCompletePanel:
     def reset(self):
         self.phase = DayPhase.DAY_ACTIVE
         self._state = None
+        self.return_to_menu = False
 
     def draw(self, surface):
         if not self.open or self._state is None:
@@ -147,8 +167,10 @@ class DayCompletePanel:
         # --- header -------------------------------------------------------
         title = self.font_big.render(self._day_label, True, ACCENT)
         surface.blit(title, (inner_l, self.rect.top + 20))
-        summary = self.font_small.render(
-            f"Score {int(state.score):,}   ·   Spent {_money(state.total_cost)}", True, DIM)
+        summary_text = f"Score {int(state.score):,}"
+        if state.show_economics:
+            summary_text += f"   ·   Spent {_money(state.total_cost)}"
+        summary = self.font_small.render(summary_text, True, DIM)
         surface.blit(summary, (inner_r - summary.get_width(), self.rect.top + 28))
 
         # star rating from the fraction of run time spent inside the ideal band
@@ -178,12 +200,25 @@ class DayCompletePanel:
         colors = {s.key: s.color for s in state.sources}
         names = {s.key: s.name for s in state.sources}
         y = body_top
-        y = self._cost_block(surface, col_l, col_r, y, state, colors, names)
-        y = self._time_block(surface, col_l, col_r, y + 18, state)
+        # Day 1 of Instructional Mode has no economics to report on yet.
+        if state.show_economics:
+            y = self._cost_block(surface, col_l, col_r, y, state, colors, names)
+            y += 18
+        y = self._time_block(surface, col_l, col_r, y, state)
         self._points_block(surface, col_l, col_r, y + 18, state)
 
-        # --- footer: "Continue to Next Day" label + confirm button --------
-        label = self.font.render("Continue to Next Day", True, BTN_TEXT)
+        # --- instructional day note, bottom-aligned in the stats column ----
+        if self._day_note:
+            lines = wrap_text(self._day_note, self.font_small, col_r - col_l)
+            line_h = self.font_small.get_height() + 2
+            note_y = body_bottom - len(lines) * line_h
+            for line in lines:
+                surface.blit(self.font_small.render(line, True, DIM), (col_l, note_y))
+                note_y += line_h
+
+        # --- footer: confirm label + button -------------------------------
+        label = self.font.render(
+            "Finish" if state.is_final_day else "Continue to Next Day", True, BTN_TEXT)
         btn_state = "hover" if self.button_rect.collidepoint(pygame.mouse.get_pos()) else "idle"
         btn = assets.scaled_to_height(f"buttons/confirm_button_{btn_state}.png", 48)
         gap = 14

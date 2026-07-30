@@ -10,7 +10,7 @@ import math
 import random
 import pygame
 
-from ui.time_of_day import SkyGradient
+from ui.time_of_day import DAY_START, DAY_END, SkyGradient
 
 SUN_COLOR = (255, 209, 102)     # matches SolarSource.color
 MOON_COLOR = (200, 210, 225)
@@ -23,7 +23,6 @@ SNOW_COLOR = (235, 240, 250)
 ICE_COLOR = (180, 220, 255)
 ICE_TINT = (190, 220, 255, 28)   # full-frame blue-white freeze wash
 
-DAY_START, DAY_END = 5.0, 20.0     # sunrise / sunset, mirrors solar_availability
 NIGHT_SPAN = 24.0 - (DAY_END - DAY_START)  # 9 hours
 
 

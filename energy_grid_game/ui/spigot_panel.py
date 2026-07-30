@@ -16,7 +16,11 @@ from ui import assets
 
 # source key -> resource_icons/<name>_icon.png (peaker shares the gas icon)
 _RESOURCE_ICON = {"nuclear": "nuclear", "coal": "coal", "gas": "gas",
-                  "peaker": "gas", "solar": "solar", "wind": "wind", "hydro": "hydro"}
+                  "peaker": "gas", "solar": "solar", "wind": "wind", "hydro": "hydro",
+                  # Instructional Day 1's anonymous valve: plain electricity,
+                  # no fuel behind it yet.
+                  "generic": "energy"}
+_DEFAULT_RESOURCE_ICON = "energy"
 # statuses where the plant sprite freezes on a darkened frame
 _IDLE_STATUS = (SourceStatus.OFFLINE, SourceStatus.DEPLETED, SourceStatus.SCRAM,
                 SourceStatus.MAINTENANCE)
@@ -135,7 +139,7 @@ class SpigotPanel:
         src.set_handle(_angle_to_pct(pos[0], pos[1], center[0], center[1]))
 
     # -- drawing ------------------------------------------------------------
-    def draw(self, surface, sources, demand_level=0.5):
+    def draw(self, surface, sources, demand_level=0.5, show_price=True):
         pygame.draw.rect(surface, BG, self.rect)
         boxes = self._layout(len(sources))
         self._dial_centers = {}
@@ -145,9 +149,9 @@ class SpigotPanel:
             # matching the other particle animations (see pipes.py).
             rate = 0.0 if src.actual_pct < 0.02 else (1.5 + 6.0 * src.actual_pct)
             self._anim_phase[src.key] = self._anim_phase.get(src.key, 0.0) + rate / 60.0
-            self._draw_widget(surface, src, box, demand_level)
+            self._draw_widget(surface, src, box, demand_level, show_price)
 
-    def _draw_widget(self, surface, src, box, demand_level):
+    def _draw_widget(self, surface, src, box, demand_level, show_price=True):
         # No card panel behind the plant — the animated sprite reads directly
         # against the gameplay backdrop so the animation stays the focus.
         card = box.inflate(-10, -10)
@@ -159,13 +163,14 @@ class SpigotPanel:
         # focus. Frozen + darkened when the plant is idle or offline.
         idle = src.actual_pct < 0.02 or src.status in _IDLE_STATUS
         sprite_h = 92 if card.width >= 150 else 60
-        frames = assets.tech_frames(assets.TECH_BY_SOURCE[src.key], sprite_h, dim=idle)
+        frames = assets.tech_frames(assets.tech_for_source(src.key), sprite_h, dim=idle)
         spr = frames[int(self._anim_phase.get(src.key, 0.0)) % 4]
         surface.blit(spr, (cx - spr.get_width() // 2, y))
         y += sprite_h + 2
 
         # resource icon + name, centered as a group
-        r_icon = assets.resource_icon(_RESOURCE_ICON[src.key], 16)
+        r_icon = assets.resource_icon(
+            _RESOURCE_ICON.get(src.key, _DEFAULT_RESOURCE_ICON), 16)
         name_txt = self.font_bold.render(src.name, True, TEXT)
         group_w = r_icon.get_width() + 4 + name_txt.get_width()
         gx = cx - group_w // 2
@@ -197,10 +202,13 @@ class SpigotPanel:
         surface.blit(mw_txt, (cx - mw_txt.get_width() // 2, y))
         y += mw_txt.get_height() + 1
 
-        price = src.price_at(demand_level)
-        price_color = PRICE_CHEAP if price < 40 else (PRICE_MID if price < 80 else PRICE_EXPENSIVE)
-        price_txt = self.font_small.render(f"${price:0.0f}/MWh", True, price_color)
-        surface.blit(price_txt, (cx - price_txt.get_width() // 2, y))
+        # Instructional Day 1 hides economics entirely — a $0/MWh card would
+        # invite exactly the question the day is trying not to raise yet.
+        if show_price:
+            price = src.price_at(demand_level)
+            price_color = PRICE_CHEAP if price < 40 else (PRICE_MID if price < 80 else PRICE_EXPENSIVE)
+            price_txt = self.font_small.render(f"${price:0.0f}/MWh", True, price_color)
+            surface.blit(price_txt, (cx - price_txt.get_width() // 2, y))
 
     def _draw_dial(self, surface, src, cx, cy):
         # -- background track arc (semicircle, west -> north -> east) --
