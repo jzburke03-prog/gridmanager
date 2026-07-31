@@ -10,7 +10,7 @@ from game_state import (GameState, WINDOW_WIDTH, WINDOW_HEIGHT, FPS,
 from ui import instructional_data
 from ui.demand_chart import DemandChart
 from ui.iso_city import IsoCity
-from ui.plant_pins import PlantPins, strict_above_keys_for_zoom
+from ui.plant_pins import PlantPins
 from ui.speed_control import SpeedControl
 from ui.hud import HUD, hud_hit_test, hud_panel_rects
 from ui.atmosphere import AtmosphereLayer, sample_atmosphere
@@ -257,13 +257,15 @@ def main():
                 elif speed_control.handle_mouse_down(event.pos, state):
                     audio.play("ui_click")
                 else:
-                    anchors = city.plant_anchors(city_rect)
+                    markers = city.plant_markers(city_rect)
                     obstacles = (chart_rect, readout_rect, hud_panels["outer"])
-                    strict_pins = strict_above_keys_for_zoom(
-                        city.camera.zoom if city.camera is not None else 1)
-                    if plant_pins.handle_mouse_down(event.pos, state.active_sources,
-                                                    anchors, obstacles, city_rect,
-                                                    strict_pins):
+                    action = plant_pins.handle_mouse_down(
+                        event.pos, state.active_sources, markers, obstacles,
+                        city_rect)
+                    if action:
+                        kind, key = action
+                        if kind == "focus":
+                            city.focus_plant(key, city_rect)
                         audio.play("ui_click")
                     elif (city_rect.collidepoint(event.pos)
                           and not hud_hit_test(hud_panels, event.pos)):
@@ -272,14 +274,11 @@ def main():
                 plant_pins.handle_mouse_up()
                 city_dragging = False
             elif event.type == pygame.MOUSEMOTION:
-                anchors = city.plant_anchors(city_rect)
+                markers = city.plant_markers(city_rect)
                 obstacles = (chart_rect, readout_rect, hud_panels["outer"])
-                strict_pins = strict_above_keys_for_zoom(
-                    city.camera.zoom if city.camera is not None else 1)
                 if plant_pins.dragging_key is not None and event.buttons[0]:
                     plant_pins.handle_mouse_motion(event.pos, state.active_sources,
-                                                   anchors, obstacles, city_rect,
-                                                   strict_pins)
+                                                   markers, obstacles, city_rect)
                 elif city_dragging and event.buttons[0]:
                     city.pan_by(event.rel[0], event.rel[1], city_rect)
                 elif not event.buttons[0]:
@@ -322,12 +321,10 @@ def main():
                              hud_panels["left"].top + 60)
         demand_chart.rect = chart_rect
         city.prepare(city_rect, state)
-        anchors = city.plant_anchors(city_rect)
+        markers = city.plant_markers(city_rect)
         pin_obstacles = (chart_rect, readout_rect, hud_panels["outer"])
-        strict_pins = strict_above_keys_for_zoom(
-            city.camera.zoom if city.camera is not None else 1)
-        pin_layout = plant_pins.layout(state.active_sources, anchors,
-                                       pin_obstacles, city_rect, strict_pins)
+        pin_layout = plant_pins.layout(state.active_sources, markers,
+                                       pin_obstacles, city_rect)
         pin_rects = [item["rect"] for item in pin_layout.values()]
         pins_rect = pin_rects[0].unionall(pin_rects[1:]) if pin_rects else None
 
@@ -403,10 +400,9 @@ def main():
         demand_chart.draw(frame, state.sim_hour, state.sources, state.history,
                           state.demand_mw, state.demand_min_mw, state.demand_peak_mw)
         city.draw_homes_label(frame, readout_rect, state.homes_without_power, state.homes_total)
-        plant_pins.draw(frame, state.active_sources, city.plant_anchors(city_rect),
+        plant_pins.draw(frame, state.active_sources, city.plant_markers(city_rect),
                         pin_obstacles, city_rect, state.demand_level,
-                        show_price=state.show_economics,
-                        strict_above_keys=strict_pins)
+                        show_price=state.show_economics)
 
         # 5. normal HUD
         hud.draw(frame, state, hud_panels)

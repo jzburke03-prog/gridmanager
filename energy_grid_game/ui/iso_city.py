@@ -1971,38 +1971,51 @@ class IsoCity:
         self.camera.center[1] -= dy / self.camera.zoom
         self.camera.clamp(rect, self._world_rect)
 
-    def plant_anchors(self, rect):
-        """Screen anchor per visible plant; off-screen sites pin to the edge."""
+    def plant_markers(self, rect):
+        """Camera-aware target, reachable anchor, and visibility per plant."""
         if self.camera is None:
             return {}
-        anchors = {}
+        markers = {}
         margin = 26
+        usable = rect.inflate(-72, -72)
         for site in self._plants:
             sprite = getattr(site, "sprite", None)
             offset = getattr(site, "sprite_offset", None)
-            if self.camera.zoom > 1 and sprite is not None and offset is not None:
+            if sprite is not None and offset is not None:
                 art_world = (site.sx + self._origin[0] + offset[0],
                              site.sy + self._origin[1] + offset[1])
                 art_screen = self.camera.world_to_screen(art_world, rect)
                 art_rect = pygame.Rect(round(art_screen[0]), round(art_screen[1]),
                                        sprite.get_width() * self.camera.zoom,
                                        sprite.get_height() * self.camera.zoom)
-                # At close zoom, a sliver of a campus at the frame edge is not
-                # enough context for a 148px control card. Require the artwork's
-                # visual centre to be on camera; this removes orphaned edge pins
-                # and their long diagonal leaders.
-                if not rect.inflate(-72, -72).collidepoint(art_rect.center):
-                    continue
+                visible = art_rect.colliderect(usable)
+            else:
+                visible = None
             visual_dx = getattr(site, "visual_dx", 0.0)
             visual_dy = getattr(site, "visual_dy", 0.0)
-            point = self.camera.world_to_screen(
+            target = self.camera.world_to_screen(
                 (site.sx + visual_dx + self._origin[0],
                  site.sy + visual_dy + self._origin[1]), rect)
-            anchors[site.key] = (
-                max(rect.left + margin, min(rect.right - margin, point[0])),
-                max(rect.top + margin, min(rect.bottom - margin, point[1])),
-            )
-        return anchors
+            if visible is None:
+                visible = usable.collidepoint(target)
+            markers[site.key] = {
+                "target": target,
+                "anchor": (
+                    max(rect.left + margin, min(rect.right - margin, target[0])),
+                    max(rect.top + margin, min(rect.bottom - margin, target[1])),
+                ),
+                "visible": visible,
+            }
+        return markers
+
+    def focus_plant(self, key, rect):
+        site = next((site for site in self._plants if site.key == key), None)
+        if site is None or self.camera is None:
+            return False
+        self.camera.center[:] = [site.sx + self._origin[0],
+                                 site.sy + self._origin[1]]
+        self.camera.clamp(rect, self._world_rect)
+        return True
 
     def _present(self, surface, rect):
         """Crop the visible world before scaling, then place it in `rect`."""
@@ -2018,7 +2031,7 @@ class IsoCity:
         surface.blit(scaled, (round(dest[0]), round(dest[1])))
 
     def prepare(self, rect, state):
-        """Ensure camera, world layers, and plant anchors exist for this frame."""
+        """Ensure camera, world layers, and plant markers exist for this frame."""
         population = state_population(state)
         fleet = tuple(sorted(s.key for s in state.sources if s.max_output_mw > 0))
         world_size = required_world_size(rect)

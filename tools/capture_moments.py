@@ -50,7 +50,7 @@ def _build():
     from game_state import GameState
     from ui.demand_chart import DemandChart
     from ui.iso_city import IsoCity
-    from ui.plant_pins import PlantPins, strict_above_keys_for_zoom
+    from ui.plant_pins import PlantPins
     from ui.speed_control import SpeedControl
     from ui.hud import HUD, hud_panel_rects
     from ui.atmosphere import AtmosphereLayer
@@ -73,7 +73,6 @@ def _build():
         "demand_chart": DemandChart(chart_rect, f["font_small"]),
         "city": IsoCity(f["font_small"], f["font"]),
         "plant_pins": PlantPins(f["font"], f["font_small"], f["font_bold"]),
-        "strict_above_keys_for_zoom": strict_above_keys_for_zoom,
         "speed_control": SpeedControl((hud_panels["left"].left + 10,
                                         hud_panels["left"].top + 60),
                                        f["font_small"], f["font"]),
@@ -117,12 +116,9 @@ def render_game(frame, st, w):
     w["city"].draw_homes_label(frame, w["readout_rect"], st.homes_without_power,
                                st.homes_total)
     pin_obstacles = (w["chart_rect"], w["readout_rect"], w["hud_panels"]["outer"])
-    strict_pins = w["strict_above_keys_for_zoom"](
-        w["city"].camera.zoom if w["city"].camera is not None else 1)
-    w["plant_pins"].draw(frame, st.active_sources, w["city"].plant_anchors(city_rect),
+    w["plant_pins"].draw(frame, st.active_sources, w["city"].plant_markers(city_rect),
                          pin_obstacles, city_rect,
-                         st.demand_level, show_price=st.show_economics,
-                         strict_above_keys=strict_pins)
+                         st.demand_level, show_price=st.show_economics)
     w["hud"].draw(frame, st, w["hud_panels"])
     w["speed_control"].draw(frame, st)
     w["hud"].draw_audio_indicator(frame, w["audio"],

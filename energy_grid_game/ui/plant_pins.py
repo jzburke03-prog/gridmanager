@@ -5,7 +5,8 @@ import pygame
 
 from sources.base_source import SourceStatus
 
-PIN_W, PIN_H = 148, 94
+PIN_W, PIN_H = 168, 94
+TAB_W, TAB_H = 116, 28
 DIAL_R = 22
 TRACK_R = 29
 TRACK_WIDTH = 4
@@ -18,10 +19,6 @@ TRACK_BG = (48, 56, 76)
 KNOB_FACE = (54, 62, 84)
 KNOB_EDGE = (18, 22, 34)
 PCT_ON = (120, 250, 176)
-
-
-def strict_above_keys_for_zoom(zoom):
-    return ("solar",) if zoom == 4 else ()
 
 STATUS_COLORS = {
     SourceStatus.OFFLINE: (110, 116, 130),
@@ -51,6 +48,7 @@ class PlantPins:
         self.font_small = font_small
         self.font_bold = font_bold
         self.dragging_key = None
+        self._t = 0.0
 
     @staticmethod
     def _candidates(anchor, viewport):
@@ -85,90 +83,199 @@ class PlantPins:
             if rect.topleft not in seen:
                 yield rect
 
-    def layout(self, sources, anchors, obstacles, viewport, strict_above_keys=()):
+    @staticmethod
+    def _tab_candidates(target, viewport):
+        cx, cy = viewport.center
+        dx, dy = target[0] - cx, target[1] - cy
+        length = math.hypot(dx, dy)
+        if length == 0:
+            dx, dy, length = 0.0, -1.0, 1.0
+        direction = (dx / length, dy / length)
+
+        hits = []
+        if dx > 0:
+            hits.append(((viewport.right - cx) / dx, "right"))
+        elif dx < 0:
+            hits.append(((viewport.left - cx) / dx, "left"))
+        if dy > 0:
+            hits.append(((viewport.bottom - cy) / dy, "bottom"))
+        elif dy < 0:
+            hits.append(((viewport.top - cy) / dy, "top"))
+        distance, edge = min((hit for hit in hits if hit[0] >= 0),
+                             default=(0.0, "top"))
+        edge_order = (edge,) + tuple(
+            candidate for candidate in ("left", "right", "top", "bottom")
+            if candidate != edge)
+        for edge in edge_order:
+            if edge in ("left", "right"):
+                edge_x = viewport.left if edge == "left" else viewport.right
+                scale = (edge_x - cx) / dx if dx else distance
+                point = (edge_x, cy + dy * scale)
+                base = pygame.Rect(
+                    viewport.left if edge == "left" else viewport.right - TAB_W,
+                    round(point[1] - TAB_H / 2), TAB_W, TAB_H)
+                span = viewport.height
+            else:
+                edge_y = viewport.top if edge == "top" else viewport.bottom
+                scale = (edge_y - cy) / dy if dy else distance
+                point = (cx + dx * scale, edge_y)
+                base = pygame.Rect(
+                    round(point[0] - TAB_W / 2),
+                    viewport.top if edge == "top" else viewport.bottom - TAB_H,
+                    TAB_W, TAB_H)
+                span = viewport.width
+
+            step = TAB_H + 6
+            seen = set()
+            for index in range(math.ceil(span / step) + 2):
+                offsets = (0,) if index == 0 else (index * step, -index * step)
+                for offset in offsets:
+                    rect = base.move(0, offset) if edge in ("left", "right") \
+                        else base.move(offset, 0)
+                    rect.clamp_ip(viewport)
+                    if rect.topleft not in seen:
+                        seen.add(rect.topleft)
+                        yield rect, edge, direction
+
+    def layout(self, sources, markers, obstacles, viewport):
         """Pure pin placement shared by drawing and hit-testing."""
         blocked = [pygame.Rect(r) for r in obstacles if r is not None]
         result = {}
-        # Solar's only acceptable slot is centred above its broad field, so it
-        # claims that slot before flexible cards search around it.
-        strict_above_keys = frozenset(strict_above_keys)
-        ordered_sources = (sorted(sources, key=lambda source: source.key not in strict_above_keys)
-                           if strict_above_keys else sources)
-        for source in ordered_sources:
-            anchor = anchors.get(source.key)
-            if anchor is None:
+        for source in sources:
+            marker = markers.get(source.key)
+            if marker is None:
                 continue
-            candidates = self._candidates(anchor, viewport)
-            if source.key in strict_above_keys:
-                # Its field is broad and asymmetric: a side/below fallback
-                # reads as an unrelated floating control over the panels.
-                # Keep the card centred above the field or omit it until the
-                # camera provides that clean slot.
-                candidate = next(candidates)
-                rect = (candidate if not any(candidate.colliderect(other)
-                                             for other in blocked) else None)
-            else:
+
+            if marker["visible"]:
+                candidates = self._candidates(marker["anchor"], viewport)
                 rect = next((candidate for candidate in candidates
                              if not any(candidate.colliderect(other)
                                         for other in blocked)), None)
-            if rect is None:
-                if source.key in strict_above_keys:
-                    continue
-                rect = pygame.Rect(viewport.left, viewport.top, PIN_W, PIN_H)
-                rect.clamp_ip(viewport)
+                if rect is None:
+                    rect = pygame.Rect(viewport.left, viewport.top, PIN_W, PIN_H)
+                    rect.clamp_ip(viewport)
+                item = {
+                    "kind": "card",
+                    "target": marker["target"],
+                    "anchor": marker["anchor"],
+                    "visible": True,
+                    "rect": rect,
+                    "dial_center": (rect.left + 36, rect.bottom - 31),
+                }
+            else:
+                choice = next((
+                    candidate for candidate in self._tab_candidates(
+                        marker["target"], viewport)
+                    if not any(candidate[0].colliderect(other)
+                               for other in blocked)
+                ), None)
+                if choice is None:
+                    choice = next(self._tab_candidates(marker["target"], viewport))
+                rect, edge, direction = choice
+                item = {
+                    "kind": "tab",
+                    "target": marker["target"],
+                    "anchor": marker["anchor"],
+                    "visible": False,
+                    "rect": rect,
+                    "edge": edge,
+                    "direction": direction,
+                }
             blocked.append(rect)
-            result[source.key] = {
-                "anchor": anchor,
-                "rect": rect,
-                "dial_center": (rect.left + 36, rect.bottom - 31),
-            }
+            result[source.key] = item
         return result
 
-    def handle_mouse_down(self, pos, sources, anchors, obstacles, viewport,
-                          strict_above_keys=()):
-        layout = self.layout(sources, anchors, obstacles, viewport,
-                             strict_above_keys)
+    def handle_mouse_down(self, pos, sources, markers, obstacles, viewport):
+        layout = self.layout(sources, markers, obstacles, viewport)
         for source in sources:
             item = layout.get(source.key)
             if item is None:
+                continue
+            if item["kind"] == "tab" and item["rect"].collidepoint(pos):
+                return "focus", source.key
+            if item["kind"] != "card":
                 continue
             cx, cy = item["dial_center"]
             if math.hypot(pos[0] - cx, pos[1] - cy) <= TRACK_R + 10:
                 self.dragging_key = source.key
                 source.set_handle(_angle_to_pct(pos[0], pos[1], cx, cy))
-                return True
-        return False
+                return "dial", source.key
+        return None
 
-    def handle_mouse_motion(self, pos, sources, anchors, obstacles, viewport,
-                            strict_above_keys=()):
+    def handle_mouse_motion(self, pos, sources, markers, obstacles, viewport):
         if self.dragging_key is None:
             return
-        layout = self.layout(sources, anchors, obstacles, viewport,
-                             strict_above_keys)
+        layout = self.layout(sources, markers, obstacles, viewport)
         for source in sources:
-            if source.key == self.dragging_key and source.key in layout:
-                cx, cy = layout[source.key]["dial_center"]
+            item = layout.get(source.key)
+            if (source.key == self.dragging_key and item is not None
+                    and item["kind"] == "card"):
+                cx, cy = item["dial_center"]
                 source.set_handle(_angle_to_pct(pos[0], pos[1], cx, cy))
                 return
 
     def handle_mouse_up(self):
         self.dragging_key = None
 
-    def draw(self, surface, sources, anchors, obstacles, viewport,
-             demand_level=0.5, show_price=True, strict_above_keys=()):
-        layout = self.layout(sources, anchors, obstacles, viewport,
-                             strict_above_keys)
+    def draw(self, surface, sources, markers, obstacles, viewport,
+             demand_level=0.5, show_price=True):
+        layout = self.layout(sources, markers, obstacles, viewport)
+        self._t += 1.0 / 60.0
+        bob = round(2 * math.sin(self._t * math.tau / 1.8))
         for source in sources:
             item = layout.get(source.key)
             if item is None:
                 continue
-            anchor, rect = item["anchor"], item["rect"]
-            pygame.draw.line(surface, (*source.color, 170), anchor, rect.center, 2)
-        for source in sources:
-            item = layout.get(source.key)
-            if item is not None:
-                self._draw_pin(surface, source, item, demand_level, show_price)
+            drawn = dict(item)
+            drawn["rect"] = item["rect"].move(0, bob)
+            if item["kind"] == "card":
+                cx, cy = item["dial_center"]
+                drawn["dial_center"] = (cx, cy + bob)
+                self._draw_pin(surface, source, drawn, demand_level, show_price)
+                self._draw_card_chevron(surface, drawn["rect"], source.color)
+            else:
+                self._draw_tab(surface, source, drawn)
         return layout
+
+    @staticmethod
+    def _draw_card_chevron(surface, rect, color):
+        pygame.draw.polygon(surface, color, [
+            (rect.centerx - 5, rect.bottom),
+            (rect.centerx + 5, rect.bottom),
+            (rect.centerx, rect.bottom + 6),
+        ])
+
+    def _draw_tab(self, surface, source, item):
+        rect = item["rect"]
+        panel = pygame.Surface(rect.size, pygame.SRCALPHA)
+        panel.fill(BG)
+        pygame.draw.rect(panel, source.color, panel.get_rect(), 2, border_radius=5)
+        surface.blit(panel, rect)
+
+        name = self.font_small.render(source.key.upper(), True, TEXT)
+        output = self.font_small.render(
+            f"{source.current_output_mw:.0f} MW", True, TEXT)
+        surface.blit(name, (rect.left + 8, rect.centery - name.get_height() // 2))
+        surface.blit(output, (rect.right - output.get_width() - 8,
+                              rect.centery - output.get_height() // 2))
+
+        if item["edge"] == "left":
+            chevron = [(rect.right - 1, rect.centery - 5),
+                       (rect.right - 1, rect.centery + 5),
+                       (rect.right + 6, rect.centery)]
+        elif item["edge"] == "right":
+            chevron = [(rect.left, rect.centery - 5),
+                       (rect.left, rect.centery + 5),
+                       (rect.left - 6, rect.centery)]
+        elif item["edge"] == "top":
+            chevron = [(rect.centerx - 5, rect.bottom - 1),
+                       (rect.centerx + 5, rect.bottom - 1),
+                       (rect.centerx, rect.bottom + 6)]
+        else:
+            chevron = [(rect.centerx - 5, rect.top),
+                       (rect.centerx + 5, rect.top),
+                       (rect.centerx, rect.top - 6)]
+        pygame.draw.polygon(surface, source.color, chevron)
 
     def _draw_pin(self, surface, source, item, demand_level, show_price):
         rect = item["rect"]

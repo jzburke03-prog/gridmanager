@@ -29,15 +29,40 @@ from ui.iso_city import (street_route, cooling_tower_width, solar_panel_layout,
                          gas_cc_train_layout)
 from ui.grid_flow import Flow
 from ui.time_of_day import daylight
-from ui.plant_pins import PlantPins, strict_above_keys_for_zoom
+from ui.plant_pins import PIN_W, PlantPins
 from ui.atmosphere import AtmosphereLayer, sample_atmosphere
 from ui.hud import HUD, hud_hit_test, hud_panel_rects
 from game_state import GameState
+from sources.base_source import SourceStatus
 import scenarios
 from main import (BG_COLOR, cancel_map_interaction, clear_frame,
                   compute_layout)
 
 RECT = pygame.Rect(0, 0, 1400, 410)
+
+
+def _font(size):
+    return pygame.font.Font(
+        pygame.font.match_font("menlo,consolas,couriernew,monospace"), size)
+
+
+def _pin_source(key):
+    names = {"gas": "Gas (CC)", "wind": "Wind"}
+    capacities = {"gas": 750.0, "wind": 225.0}
+    source = SimpleNamespace(
+        key=key,
+        name=names[key],
+        color=(90, 180, 220),
+        requested_pct=0.5,
+        actual_pct=0.5,
+        current_output_mw=capacities[key] * 0.5,
+        max_output_mw=capacities[key],
+        status=SourceStatus.ONLINE,
+        time_to_target=lambda: 0.0,
+        price_at=lambda _demand: 42.0,
+    )
+    source.set_handle = lambda value: setattr(source, "requested_pct", value)
+    return source
 
 
 def test_region_world_size_covers_minimum_zoom_with_overscan():
@@ -199,7 +224,7 @@ def test_camera_round_trip_zoom_anchor_and_clamp():
     assert visible.top >= world.top and visible.bottom <= world.bottom
 
 
-def test_plant_anchors_follow_camera_and_stay_reachable():
+def test_plant_markers_follow_camera_and_stay_reachable():
     viewport = pygame.Rect(100, 50, 800, 400)
     city = IsoCity(None)
     city._world_rect = pygame.Rect(0, 0, 600, 350)
@@ -207,11 +232,12 @@ def test_plant_anchors_follow_camera_and_stay_reachable():
     city._plants = [SimpleNamespace(key="gas", sx=0, sy=0),
                     SimpleNamespace(key="solar", sx=599, sy=349)]
 
-    anchors = city.plant_anchors(viewport)
-    assert set(anchors) == {"gas", "solar"}
-    for point in anchors.values():
-        assert viewport.left <= point[0] <= viewport.right
-        assert viewport.top <= point[1] <= viewport.bottom
+    markers = city.plant_markers(viewport)
+    assert set(markers) == {"gas", "solar"}
+    for marker in markers.values():
+        assert viewport.left <= marker["anchor"][0] <= viewport.right
+        assert viewport.top <= marker["anchor"][1] <= viewport.bottom
+        assert set(marker) == {"target", "anchor", "visible"}
 
 
 def test_plant_static_surfaces_are_local_not_world_sized():
@@ -240,16 +266,16 @@ def test_baked_plant_art_stays_inside_world_and_pins_use_visual_centres():
 
     expected_world_x = solar.sx + city._origin[0] + solar.visual_dx
     expected_world_y = solar.sy + city._origin[1] + solar.visual_dy
-    anchor = city.plant_anchors(viewport)["solar"]
+    target = city.plant_markers(viewport)["solar"]["target"]
     expected_screen_x = city.camera.world_to_screen(
         (expected_world_x, solar.sy + city._origin[1]), viewport)[0]
     expected_screen_y = city.camera.world_to_screen(
         (expected_world_x, expected_world_y), viewport)[1]
-    assert abs(anchor[0] - expected_screen_x) <= 1
-    assert abs(anchor[1] - expected_screen_y) <= 1
+    assert abs(target[0] - expected_screen_x) <= 1
+    assert abs(target[1] - expected_screen_y) <= 1
 
 
-def test_zoomed_map_omits_controls_for_fully_offscreen_plants():
+def test_zoomed_map_marks_fully_offscreen_plants_without_dropping_them():
     viewport = pygame.Rect(0, 0, 1000, 460)
     fleet = ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro")
     city = IsoCity(None)
@@ -261,8 +287,10 @@ def test_zoomed_map_omits_controls_for_fully_offscreen_plants():
     city.camera.center[:] = solar_world
     city.camera.clamp(viewport, city._world_rect)
 
-    anchors = city.plant_anchors(viewport)
-    assert set(anchors) == {"solar"}
+    markers = city.plant_markers(viewport)
+    assert set(markers) == set(fleet)
+    assert {key for key, marker in markers.items() if marker["visible"]} == {
+        "peaker", "solar"}
 
 
 def test_every_plant_has_a_decorative_switchyard_anchor_only():
@@ -371,11 +399,14 @@ def test_pin_layout_avoids_overlays_and_drags_without_a_prior_draw():
 
     viewport = pygame.Rect(0, 0, 800, 500)
     obstacle = pygame.Rect(0, 300, 300, 180)
-    anchors = {"gas": (120, 400), "coal": (120, 400)}
+    markers = {
+        "gas": {"target": (120, 400), "anchor": (120, 400), "visible": True},
+        "coal": {"target": (120, 400), "anchor": (120, 400), "visible": True},
+    }
     sources = [Source(), SimpleNamespace(key="coal")]
     pins = PlantPins(None, None, None)
 
-    layout = pins.layout(sources, anchors, [obstacle], viewport)
+    layout = pins.layout(sources, markers, [obstacle], viewport)
     gas, coal = layout["gas"]["rect"], layout["coal"]["rect"]
     assert viewport.contains(gas) and viewport.contains(coal)
     assert not gas.colliderect(obstacle) and not coal.colliderect(obstacle)
@@ -383,33 +414,70 @@ def test_pin_layout_avoids_overlays_and_drags_without_a_prior_draw():
 
     dial = layout["gas"]["dial_center"]
     assert pins.handle_mouse_down((dial[0], dial[1] - 20), [sources[0]],
-                                  anchors, [obstacle], viewport)
+                                  markers, [obstacle], viewport) == ("dial", "gas")
     assert 0.45 < sources[0].requested_pct < 0.55
 
 
-def test_solar_control_is_above_its_field_or_hidden_when_that_slot_is_blocked():
+def test_full_plant_card_fits_longest_mw_line():
+    font = pygame.font.Font(pygame.font.match_font("menlo,monospace"), 13)
+    assert font.size("450/750 MW")[0] <= PIN_W - 78
+
+
+def test_offscreen_plants_become_directional_edge_tabs():
+    pins = PlantPins(_font(16), _font(13), _font(16))
+    viewport = pygame.Rect(0, 0, 800, 500)
+    source = _pin_source("gas")
+    markers = {"gas": {"target": (1100, 260), "anchor": (774, 260),
+                       "visible": False}}
+    item = pins.layout([source], markers, (), viewport)["gas"]
+    assert item["kind"] == "tab"
+    assert item["edge"] == "right"
+    assert viewport.contains(item["rect"])
+    assert item["direction"][0] > 0
+
+
+def test_edge_tab_draws_chevron_inward_from_viewport_edge():
+    pins = PlantPins(_font(16), _font(13), _font(16))
+    viewport = pygame.Rect(0, 0, 800, 500)
+    source = _pin_source("gas")
+    markers = {"gas": {"target": (1100, 260), "anchor": (774, 260),
+                       "visible": False}}
+    surface = pygame.Surface(viewport.size, pygame.SRCALPHA)
+    item = pins.draw(surface, [source], markers, (), viewport)["gas"]
+    assert surface.get_at((item["rect"].left - 5, item["rect"].centery)).a > 0
+
+
+def test_edge_tab_click_requests_camera_focus():
+    pins = PlantPins(_font(16), _font(13), _font(16))
+    viewport = pygame.Rect(0, 0, 800, 500)
+    source = _pin_source("gas")
+    markers = {"gas": {"target": (1100, 260), "anchor": (774, 260),
+                       "visible": False}}
+    item = pins.layout([source], markers, (), viewport)["gas"]
+    assert pins.handle_mouse_down(
+        item["rect"].center, [source], markers, (), viewport) == ("focus", "gas")
+
+
+def test_visible_card_draw_has_chevron_and_no_leader_line():
+    pins = PlantPins(_font(16), _font(13), _font(16))
+    viewport = pygame.Rect(0, 0, 800, 500)
+    source = _pin_source("wind")
+    markers = {"wind": {"target": (400, 350), "anchor": (400, 350),
+                        "visible": True}}
+    surface = pygame.Surface(viewport.size, pygame.SRCALPHA)
+    layout = pins.draw(surface, [source], markers, (), viewport)
+    card = layout["wind"]["rect"]
+    assert surface.get_at((card.centerx, card.bottom + 10)).a == 0
+    assert surface.get_at((card.centerx, card.bottom + 5)).a > 0
+
+
+def test_focus_plant_centers_camera_on_plant():
+    city = _city(200_000)
     viewport = pygame.Rect(0, 0, 1000, 680)
-    anchor = (500, 420)
-    source = SimpleNamespace(key="solar")
-    pins = PlantPins(None, None, None)
-
-    clear = pins.layout([source], {"solar": anchor}, (), viewport,
-                        strict_above_keys=("solar",))
-    rect = clear["solar"]["rect"]
-    assert rect.centerx == anchor[0]
-    assert rect.bottom < anchor[1]
-
-    blocker = pygame.Rect(rect.left - 4, rect.top - 4,
-                          rect.width + 8, rect.height + 8)
-    assert "solar" not in pins.layout(
-        [source], {"solar": anchor}, (blocker,), viewport,
-        strict_above_keys=("solar",))
-
-
-def test_solar_uses_strict_above_placement_only_at_inspection_zoom():
-    assert strict_above_keys_for_zoom(1) == ()
-    assert strict_above_keys_for_zoom(2) == ()
-    assert strict_above_keys_for_zoom(4) == ("solar",)
+    assert city.focus_plant("gas", viewport)
+    site = next(site for site in city._plants if site.key == "gas")
+    expected = (site.sx + city._origin[0], site.sy + city._origin[1])
+    assert tuple(city.camera.center) == expected
 
 
 def test_all_plant_pins_stay_reachable_at_every_zoom_and_viewport():
@@ -432,7 +500,7 @@ def test_all_plant_pins_stay_reachable_at_every_zoom_and_viewport():
         city.camera = Camera(world.center, zoom=1)
         for zoom in (1, 2, 4):
             city.camera.set_zoom(zoom, viewport.center, viewport, world)
-            layout = pins.layout(sources, city.plant_anchors(viewport),
+            layout = pins.layout(sources, city.plant_markers(viewport),
                                  obstacles, viewport)
             rects = [item["rect"] for item in layout.values()]
             assert len(rects) == len(keys)
@@ -459,7 +527,10 @@ def test_each_render_starts_from_a_clean_neutral_frame():
 
 def _city(population):
     city = IsoCity(None)
-    city._layout(RECT, population, ())
+    city._layout(RECT, population, ("gas",))
+    city._world_rect = pygame.Rect(0, 0, RECT.width, 680)
+    city._origin = (RECT.width // 2, int(RECT.height * 0.56))
+    city.camera = Camera(RECT.center)
     return city
 
 
