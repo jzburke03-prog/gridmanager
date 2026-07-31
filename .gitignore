@@ -4,3 +4,5 @@
 __pycache__/
 *.pyc
 eia_cache/
+.worktrees/
+.superpowers/
