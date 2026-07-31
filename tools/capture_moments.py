@@ -156,6 +156,18 @@ def capture(out_dir):
         st.overflow = ratio >= 1.0
         w["hud"]._ratio_display = ratio
 
+    def fresh_game(sim_hour, zoom):
+        nonlocal w
+        w = _build()
+        st = _new_state(w, sim_hour=sim_hour)
+        st.sim_hour = sim_hour
+        w["city"].prepare(w["city_rect"], st)
+        camera = w["city"].camera
+        camera.center[:] = w["city"]._world_rect.center
+        camera.set_zoom(zoom, w["city_rect"].center,
+                        w["city_rect"], w["city"]._world_rect)
+        return st
+
     # --- menu screens ---
     menu = w["menu"]
     for st_id, name in ((TITLE, "01_title"), (MODE, "02_mode"),
@@ -273,7 +285,23 @@ def capture(out_dir):
             assert w["city"]._fires
         save(name)
 
-    print(f"captured 25 moments to {out_dir}")
+    # Pan a fresh 4x view so directional tabs can be reviewed together.
+    st5 = fresh_game(14.0, 4)
+    w["city"].pan_by(800, 0, w["city_rect"])
+    markers = w["city"].plant_markers(w["city_rect"])
+    assert sum(not marker["visible"] for marker in markers.values()) >= 3
+    settle(st5, 1)
+    save("26_offscreen_plant_tabs")
+
+    # Rebuild between rush captures so traffic starts from the same seeded
+    # road state and only the requested hour differs.
+    for hour, name in ((9.0, "27_morning_rush"),
+                       (17.0, "28_evening_rush")):
+        rush = fresh_game(hour, 2)
+        settle(rush, 90)
+        save(name)
+
+    print(f"captured 28 moments to {out_dir}")
 
 
 def main():
