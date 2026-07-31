@@ -21,16 +21,6 @@ import pygame
 # energy_grid_game/ui/assets.py -> repo root -> assets
 ASSET_DIR = Path(__file__).resolve().parents[2] / "assets"
 
-# source key -> tech sprite base name (assets/tech/<name>_frame_0N.png)
-TECH_BY_SOURCE = {
-    "nuclear": "nuclear_power",
-    "coal": "coal_power",
-    "gas": "natural_gas_combined_cycle",
-    "peaker": "natural_gas_peaker",
-    "solar": "solar_power",
-    "wind": "wind_power",
-    "hydro": "hydroelectric_power",
-}
 OPERATOR = "question_mark_operator"
 
 _raw_cache = {}      # relpath -> Surface (convert_alpha, uncropped)

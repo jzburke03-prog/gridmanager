@@ -18,6 +18,8 @@ import pygame
 
 from ui import assets
 from ui.demand_chart import DemandChart, STACK_ORDER
+from ui.dialogue import wrap_text
+from ui.instructional_data import DAY_NOTES
 
 PANEL_BG = (22, 28, 44)
 PANEL_EDGE = (120, 132, 160)
@@ -53,7 +55,9 @@ class DayCompletePanel:
         self.phase = DayPhase.DAY_ACTIVE
         self.rect = pygame.Rect(0, 0, 0, 0)
         self.button_rect = pygame.Rect(0, 0, 0, 0)
+        self.return_to_menu = False   # set on confirming the final day
         self._day_label = ""
+        self._day_note = None    # instructional-only closing line
         # frozen reference to the completed day's GameState, captured on the
         # DAY_ACTIVE -> DAY_COMPLETE_PAUSED transition (the sim is frozen from
         # that point until the player confirms), plus a reusable large chart.
@@ -74,6 +78,8 @@ class DayCompletePanel:
             if state.day_complete and not state.game_over:
                 self.phase = DayPhase.DAY_COMPLETE_PAUSED
                 self._day_label = f"DAY {state.day} COMPLETE"
+                self._day_note = (DAY_NOTES.get(state.day)
+                                  if state.config.is_instructional else None)
                 # freeze a reference to this day's state for the summary; the
                 # completed day's demand shape seeds the chart's future preview
                 self._state = state
@@ -96,7 +102,20 @@ class DayCompletePanel:
             return  # already confirmed; ignore repeats
         if audio:
             audio.play("ui_click")
+        # Instructional Mode's last day is terminal: confirming returns to the
+        # menu instead of rolling into a day the script has nothing to say about.
+        if self._state is not None and self._state.is_final_day:
+            self.return_to_menu = True
+            self.phase = DayPhase.DAY_ACTIVE
+            return
         self.phase = DayPhase.ADVANCING_DAY
+
+    def take_return_to_menu(self) -> bool:
+        """One-shot: True once after the final day is confirmed."""
+        if not self.return_to_menu:
+            return False
+        self.return_to_menu = False
+        return True
 
     def handle_event(self, event, audio=None) -> bool:
         if not self.blocks_gameplay():
@@ -120,6 +139,7 @@ class DayCompletePanel:
     def reset(self):
         self.phase = DayPhase.DAY_ACTIVE
         self._state = None
+        self.return_to_menu = False
 
     def draw(self, surface):
         if not self.open or self._state is None:
@@ -147,8 +167,10 @@ class DayCompletePanel:
         # --- header -------------------------------------------------------
         title = self.font_big.render(self._day_label, True, ACCENT)
         surface.blit(title, (inner_l, self.rect.top + 20))
-        summary = self.font_small.render(
-            f"Score {int(state.score):,}   ·   Spent {_money(state.total_cost)}", True, DIM)
+        summary_text = f"Score {int(state.score):,}"
+        if state.show_economics:
+            summary_text += f"   ·   Spent {_money(state.total_cost)}"
+        summary = self.font_small.render(summary_text, True, DIM)
         surface.blit(summary, (inner_r - summary.get_width(), self.rect.top + 28))
 
         # star rating from the fraction of run time spent inside the ideal band
@@ -177,13 +199,27 @@ class DayCompletePanel:
         col_r = inner_r
         colors = {s.key: s.color for s in state.sources}
         names = {s.key: s.name for s in state.sources}
-        y = body_top
-        y = self._cost_block(surface, col_l, col_r, y, state, colors, names)
-        y = self._time_block(surface, col_l, col_r, y + 18, state)
-        self._points_block(surface, col_l, col_r, y + 18, state)
+        # Blocks flow strictly top-down and the note follows them, so nothing can
+        # collide by construction. The note used to be anchored to the column's
+        # bottom, which worked only while the blocks above happened to be short
+        # enough — adding a row per source ran them straight through it.
+        # Day 1 of Instructional Mode has no economics to report on yet.
+        y = self._source_block(surface, col_l, col_r, body_top, state, colors, names,
+                               show_cost=state.show_economics)
+        y = self._time_block(surface, col_l, col_r, y + 16, state)
+        y = self._points_block(surface, col_l, col_r, y + 16, state)
 
-        # --- footer: "Continue to Next Day" label + confirm button --------
-        label = self.font.render("Continue to Next Day", True, BTN_TEXT)
+        if self._day_note:
+            lines = wrap_text(self._day_note, self.font_small, col_r - col_l)
+            line_h = self.font_small.get_height() + 2
+            note_y = min(y + 16, body_bottom - len(lines) * line_h)
+            for line in lines:
+                surface.blit(self.font_small.render(line, True, DIM), (col_l, note_y))
+                note_y += line_h
+
+        # --- footer: confirm label + button -------------------------------
+        label = self.font.render(
+            "Finish" if state.is_final_day else "Continue to Next Day", True, BTN_TEXT)
         btn_state = "hover" if self.button_rect.collidepoint(pygame.mouse.get_pos()) else "idle"
         btn = assets.scaled_to_height(f"buttons/confirm_button_{btn_state}.png", 48)
         gap = 14
@@ -205,24 +241,39 @@ class DayCompletePanel:
         surface.blit(h, (x, y))
         return y + h.get_height() + 8
 
-    def _cost_block(self, surface, x0, x1, y, state, colors, names):
-        y = self._heading(surface, x0, y, "SPENT BY SOURCE")
+    def _source_block(self, surface, x0, x1, y, state, colors, names, show_cost):
+        """One row per source: capacity factor as a bar, then CF% and spend.
+
+        Deliberately a single table. Two stacked per-source tables meant sixteen
+        rows in a column with space for about ten, and the overflow ran straight
+        through the points breakdown and out of the card.
+
+        Capacity factor is measured against nameplate, not against what the
+        weather allowed — a becalmed wind farm SHOULD read low, and that is the
+        lesson. Sources with no capacity today are omitted entirely; one left
+        idle still shows, because 0% is information too.
+        """
+        heading = "BY SOURCE — CAPACITY FACTOR" + ("  ·  SPENT" if show_cost else "")
+        y = self._heading(surface, x0, y, heading)
         costs = state.cost_by_source
-        peak = max(costs.values()) if costs else 0.0
-        bar_x = x0 + 96
-        bar_w_max = x1 - bar_x - 78
+        cost_w = 62 if show_cost else 0
+        bar_x = x0 + 92
+        bar_w_max = max(24, x1 - bar_x - 44 - cost_w)
         for key in STACK_ORDER:
-            amount = costs.get(key, 0.0)
-            if amount < 1.0:
+            cf = state.capacity_factor(key)
+            if cf is None:
                 continue
-            name = self.font_small.render(names.get(key, key), True, DIM)
-            surface.blit(name, (x0, y))
-            frac = amount / peak if peak > 0 else 0.0
-            bar = pygame.Rect(bar_x, y + 1, max(2, int(bar_w_max * frac)), 12)
-            pygame.draw.rect(surface, colors.get(key, (120, 120, 120)), bar, border_radius=2)
-            val = self.font_small.render(_money(amount), True, TITLE)
-            surface.blit(val, (x1 - val.get_width(), y))
-            y += 20
+            surface.blit(self.font_small.render(names.get(key, key), True, DIM), (x0, y))
+            track = pygame.Rect(bar_x, y + 1, bar_w_max, 11)
+            pygame.draw.rect(surface, (34, 42, 62), track, border_radius=2)
+            fill = pygame.Rect(bar_x, y + 1, max(2, int(bar_w_max * min(1.0, cf))), 11)
+            pygame.draw.rect(surface, colors.get(key, (120, 120, 120)), fill, border_radius=2)
+            pct = self.font_small.render(f"{cf * 100:0.0f}%", True, TITLE)
+            surface.blit(pct, (bar_x + bar_w_max + 40 - pct.get_width(), y))
+            if show_cost:
+                val = self.font_small.render(_money(costs.get(key, 0.0)), True, TITLE)
+                surface.blit(val, (x1 - val.get_width(), y))
+            y += 19
         return y
 
     def _time_block(self, surface, x0, x1, y, state):
@@ -269,7 +320,7 @@ class DayCompletePanel:
         surface.blit(lab, (x0, y))
         num = self.font.render(f"{int(total):+,}", True, POS if total >= 0 else NEG)
         surface.blit(num, (x1 - num.get_width(), y))
-        return y
+        return y + lab.get_height()
 
 
 def _money(dollars: float) -> str:

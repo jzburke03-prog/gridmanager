@@ -19,7 +19,9 @@ LABEL_OFFSETS = [0, 6, 12, 18, 24]
 
 # bottom -> top stacking order: firm baseload first, variable/peaking last,
 # echoing the classic utility dispatch-stack chart
-STACK_ORDER = ["nuclear", "coal", "gas", "peaker", "hydro", "wind", "solar"]
+# "generic" is Instructional day 1's single valve. It has to be here or that
+# day's chart never fills and the player gets no read on how they did.
+STACK_ORDER = ["generic", "nuclear", "coal", "gas", "peaker", "hydro", "wind", "solar"]
 
 
 class DemandChart:

@@ -18,12 +18,27 @@ DIM = (150, 158, 176)
 SUPPLY_COLOR = (110, 220, 160)
 DEMAND_COLOR = (255, 170, 90)
 
-# The time-of-day sky now runs genuinely bright at midday (see ui/time_of_day),
-# and this readout is drawn straight onto it with no panel behind it. A scrim
-# under the top HUD band keeps the light text legible against a noon sky without
-# tinting any actual UI panel.
-SCRIM_COLOR = (10, 13, 21)
-SCRIM_PEAK_ALPHA = 165
+PANEL_TOP = 14
+HUD_W = 900
+LEFT_W = 300
+CENTER_W = 400
+RIGHT_W = 200
+PANEL_H = 150
+PANEL_BG = (10, 14, 22, 205)
+PANEL_EDGE = (156, 174, 196, 92)
+
+
+def hud_panel_rects(width, height):
+    """One centered HUD panel, divided into three content zones."""
+    outer = pygame.Rect((width - HUD_W) // 2, PANEL_TOP, HUD_W, PANEL_H)
+    left = pygame.Rect(outer.left, outer.top, LEFT_W, PANEL_H)
+    center = pygame.Rect(left.right, outer.top, CENTER_W, PANEL_H)
+    right = pygame.Rect(center.right, outer.top, RIGHT_W, PANEL_H)
+    return {"outer": outer, "left": left, "center": center, "right": right}
+
+
+def hud_hit_test(layout, pos):
+    return layout["outer"].collidepoint(pos)
 
 # Concise, honest cause-of-death text for each failure the sim can actually
 # produce, keyed by GameState.game_over_reason.
@@ -80,8 +95,7 @@ class HUD:
         self._prev_fill = None
         self._ratio_display = 1.0
         self._border = GradientBorder()
-        self._scrim = None
-        self._scrim_key = None
+        self._panel_cache = {}
         self.audio_rect = None    # click target for the sound toggle, set in draw
         # Not every matched monospace font ships the degree glyph; drop it
         # rather than rendering a missing-glyph box next to the temperature.
@@ -91,36 +105,40 @@ class HUD:
         except Exception:
             self._degree_ok = False
 
-    def _top_scrim(self, width, band_h):
-        """Cached legibility gradient behind the top HUD band. Built one pixel
-        wide and stretched, so a resize costs one scale blit and a normal frame
-        costs nothing."""
-        key = (width, band_h)
-        if key != self._scrim_key:
-            column = pygame.Surface((1, band_h), pygame.SRCALPHA)
-            for y in range(band_h):
-                alpha = int(SCRIM_PEAK_ALPHA * (1.0 - y / band_h) ** 1.5)
-                column.set_at((0, y), (*SCRIM_COLOR, alpha))
-            self._scrim = pygame.transform.scale(column, (width, band_h))
-            self._scrim_key = key
-        return self._scrim
+    def _glass_panel(self, size):
+        panel = self._panel_cache.get(size)
+        if panel is None:
+            panel = pygame.Surface(size, pygame.SRCALPHA)
+            pygame.draw.rect(panel, PANEL_BG, panel.get_rect(), border_radius=9)
+            pygame.draw.rect(panel, PANEL_EDGE, panel.get_rect(), width=1,
+                             border_radius=9)
+            self._panel_cache[size] = panel
+        return panel
 
-    def draw(self, surface, state, hud_band_height=220):
+    def draw(self, surface, state, panels=None):
         self._t += 1 / 60.0
         w, h = surface.get_size()
-
-        surface.blit(self._top_scrim(w, hud_band_height), (0, 0))
+        panels = panels if isinstance(panels, dict) else hud_panel_rects(w, h)
+        outer = panels["outer"]
+        left, center, right = (panels[name] for name in ("left", "center", "right"))
+        surface.blit(self._glass_panel(outer.size), outer)
+        divider = pygame.Surface((1, outer.height), pygame.SRCALPHA)
+        divider.fill(PANEL_EDGE)
+        for x in (left.right, center.right):
+            surface.blit(divider, (x, outer.top))
 
         clock_txt = self.font_big.render(state.clock_string(), True, TEXT)
-        surface.blit(clock_txt, (24, 20))
+        clock_pos = (left.left + 10, left.top + 9)
+        surface.blit(clock_txt, clock_pos)
 
         # date + season stacked just right of the clock (left column stays free
         # for the event banner). The date advances one day per in-game day.
         date_txt = self.font_small.render(state.date_string(), True, TEXT)
         season_txt = self.font_small.render(state.season_string().upper(), True, DIM)
-        dx = 24 + clock_txt.get_width() + 14
-        surface.blit(date_txt, (dx, 21))
-        surface.blit(season_txt, (dx, 21 + date_txt.get_height() + 1))
+        dx = clock_pos[0] + clock_txt.get_width() + 12
+        dy = left.top + 10
+        surface.blit(date_txt, (dx, dy))
+        surface.blit(season_txt, (dx, dy + date_txt.get_height() + 1))
 
         # ambient temperature beside the season: blue in a freeze, red in a
         # scorcher, so severe-weather events read at a glance
@@ -129,41 +147,52 @@ class HUD:
         deg = "°F" if self._degree_ok else "F"
         temp_txt = self.font_small.render(f"{state.temp_f:0.0f}{deg}", True, temp_color)
         surface.blit(temp_txt, (dx + season_txt.get_width() + 10,
-                                21 + date_txt.get_height() + 1))
+                                dy + date_txt.get_height() + 1))
 
         # Region/scenario run that fell back to synthetic curves: keep the
         # status visible after the launch flash message has faded.
-        if state.config.mode != "standard" and state.config.data_source == "synthetic":
+        # Instructional Mode is synthetic by design, not by fallback — warning
+        # about it would report a failure that never happened.
+        if (state.config.mode not in ("standard", "instructional")
+                and state.config.data_source == "synthetic"):
             synth_txt = self.font_small.render("SYNTHETIC DATA", True, (240, 200, 90))
-            surface.blit(synth_txt, (dx, 21 + date_txt.get_height()
+            surface.blit(synth_txt, (dx, dy + date_txt.get_height()
                                      + season_txt.get_height() + 2))
 
         score_label = self.font_small.render("SCORE", True, DIM)
         score_txt = self.font_big.render(f"{int(state.score):,}", True, TEXT)
-        surface.blit(score_label, (w - score_label.get_width() - 24, 18))
-        surface.blit(score_txt, (w - score_txt.get_width() - 24, 18 + score_label.get_height() + 1))
+        score_right = right.right - 10
+        score_top = right.top + 8
+        surface.blit(score_label, (score_right - score_label.get_width(), score_top))
+        surface.blit(score_txt, (score_right - score_txt.get_width(),
+                                 score_top + score_label.get_height() + 1))
         arrow = "▲" if state.score_delta_per_sec > 0 else ("▼" if state.score_delta_per_sec < 0 else "►")
         delta_color = (100, 220, 140) if state.score_delta_per_sec > 0 else (
             (230, 90, 90) if state.score_delta_per_sec < 0 else DIM)
         delta_txt = self.font_small.render(f"{state.score_delta_per_sec:+0.0f}/s {arrow}", True, delta_color)
-        surface.blit(delta_txt, (w - delta_txt.get_width() - 24,
-                                  18 + score_label.get_height() + score_txt.get_height() + 3))
+        surface.blit(delta_txt, (score_right - delta_txt.get_width(),
+                                  score_top + score_label.get_height()
+                                  + score_txt.get_height() + 3))
 
         hs_color = (255, 215, 90) if state.new_high_score else DIM
         hs_txt = self.font_small.render(f"BEST {int(state.high_score):,}", True, hs_color)
-        surface.blit(hs_txt, (w - hs_txt.get_width() - 24,
-                               18 + score_label.get_height() + score_txt.get_height()
+        surface.blit(hs_txt, (score_right - hs_txt.get_width(),
+                               score_top + score_label.get_height() + score_txt.get_height()
                                + delta_txt.get_height() + 6))
 
-        spent_label = self.font_small.render("TOTAL SPENT", True, DIM)
-        spent_txt = self.font.render(_format_money(state.total_cost), True, (240, 200, 90))
-        spent_y = 18 + score_label.get_height() + score_txt.get_height() + delta_txt.get_height() + hs_txt.get_height() + 14
-        surface.blit(spent_label, (w - spent_label.get_width() - 24, spent_y))
-        spent_val_y = spent_y + spent_label.get_height() + 1
-        money_icon = assets.resource_icon("money", 16)
-        surface.blit(spent_txt, (w - spent_txt.get_width() - 24, spent_val_y))
-        surface.blit(money_icon, (w - spent_txt.get_width() - 24 - money_icon.get_width() - 5,
-                                  spent_val_y + (spent_txt.get_height() - 16) // 2))
+        # Instructional Day 1 teaches balance alone — no price, no spend.
+        if state.show_economics:
+            spent_label = self.font_small.render("TOTAL SPENT", True, DIM)
+            spent_txt = self.font.render(_format_money(state.total_cost), True, (240, 200, 90))
+            spent_y = (score_top + score_label.get_height() + score_txt.get_height()
+                       + delta_txt.get_height() + hs_txt.get_height() + 14)
+            surface.blit(spent_label, (score_right - spent_label.get_width(), spent_y))
+            spent_val_y = spent_y + spent_label.get_height() + 1
+            money_icon = assets.resource_icon("money", 16)
+            surface.blit(spent_txt, (score_right - spent_txt.get_width(), spent_val_y))
+            surface.blit(money_icon, (score_right - spent_txt.get_width()
+                                      - money_icon.get_width() - 5,
+                                      spent_val_y + (spent_txt.get_height() - 16) // 2))
 
         # --- supply/demand fulfillment: the big top-center number now answers
         # "am I meeting demand right now", not the tank's slow-accumulating
@@ -179,12 +208,15 @@ class HUD:
         self._prev_fill = raw_ratio
         ratio_str = f"{min(self._ratio_display, 9.99) * 100:0.0f}% {trend}"
         ratio_txt = self.font_mono_big.render(ratio_str, True, ratio_color)
-        surface.blit(ratio_txt, (w // 2 - ratio_txt.get_width() // 2, 20))
+        center_x = center.centerx
+        ratio_y = center.top + 7
+        surface.blit(ratio_txt, (center_x - ratio_txt.get_width() // 2, ratio_y))
 
         balance_txt = self.font.render(_balance_label(self._ratio_display), True, ratio_color)
-        surface.blit(balance_txt, (w // 2 - balance_txt.get_width() // 2, 20 + ratio_txt.get_height()))
+        surface.blit(balance_txt, (center_x - balance_txt.get_width() // 2,
+                                   ratio_y + ratio_txt.get_height()))
 
-        y = 20 + ratio_txt.get_height() + balance_txt.get_height() + 8
+        y = ratio_y + ratio_txt.get_height() + balance_txt.get_height() + 7
 
         # prominent SUPPLY / DEMAND MW readout, side by side
         supply_lbl = self.font_small.render("SUPPLY", True, DIM)
@@ -195,7 +227,7 @@ class HUD:
 
         gap = 14
         block_w = supply_val.get_width() + sep.get_width() + demand_val.get_width() + gap * 2
-        bx = w // 2 - block_w // 2
+        bx = center_x - block_w // 2
         energy_icon = assets.resource_icon("energy", 14)
         supply_lbl_x = bx + supply_val.get_width() // 2 - supply_lbl.get_width() // 2
         surface.blit(energy_icon, (supply_lbl_x - energy_icon.get_width() - 3,
@@ -215,18 +247,19 @@ class HUD:
         # dispatched right now — cheap when only baseload runs, expensive the
         # moment demand forces peaker gas online, same as a real merit-order
         # market clearing price
-        price_txt = self.font_small.render(
-            f"GRID PRICE ${state.grid_price:0.0f}/MWh  ·  {_format_money(state.cost_per_hour)}/hr",
-            True, _price_color(state.grid_price))
-        surface.blit(price_txt, (w // 2 - price_txt.get_width() // 2, y))
-        y += price_txt.get_height() + 10
+        if state.show_economics:
+            price_txt = self.font_small.render(
+                f"GRID PRICE ${state.grid_price:0.0f}/MWh  ·  {_format_money(state.cost_per_hour)}/hr",
+                True, _price_color(state.grid_price))
+            surface.blit(price_txt, (center_x - price_txt.get_width() // 2, y))
+            y += price_txt.get_height() + 10
 
         # The reservoir badge used to sit here. It was redundant with the big
         # ratio readout above (both answer "am I meeting demand"), and the tank
         # itself already shows the same thing in water — the mechanic and its
         # graphic are untouched, only this duplicate metric is gone.
         # "Homes without power" also used to sit here; it is a fact about the
-        # city, so it is now drawn above the city graphic (see ui/city_grid).
+        # city, so it is now drawn above the city graphic (see ui/iso_city).
         # `y` is a running cursor, so both removals close up automatically and
         # everything below simply moves up.
 
@@ -243,16 +276,17 @@ class HUD:
             banner.blit(icon, (tri_zone, (bh - icon.get_height()) // 2))
             banner.blit(text, (tri_zone + icon.get_width() + 6, (bh - text.get_height()) // 2))
             banner.set_alpha(int(190 + 60 * abs(math.sin(self._t * 3))))
-            surface.blit(banner, (24, 20 + clock_txt.get_height() + 8))
+            surface.blit(banner, (left.left, left.bottom + 7))
 
-        flash_y = y
+        message_y = center.bottom + 7
+        flash_y = message_y
         for text, ttl in state.flash_messages:
             alpha = min(255, int(ttl * 150))
             flash_surf = self.font_big.render(text, True, (255, 90, 90))
             fs = pygame.Surface(flash_surf.get_size(), pygame.SRCALPHA)
             fs.blit(flash_surf, (0, 0))
             fs.set_alpha(alpha)
-            surface.blit(fs, (w // 2 - flash_surf.get_width() // 2, flash_y))
+            surface.blit(fs, (center_x - flash_surf.get_width() // 2, flash_y))
             flash_y += flash_surf.get_height() + 4
 
         if state.paused:
@@ -267,16 +301,19 @@ class HUD:
             severity = (SEVERE_LOW_THRESHOLD - max(0.0, fill_pct)) / SEVERE_LOW_THRESHOLD
             self._draw_vignette(surface, RED, severity)
             label = "CATASTROPHIC BLACKOUT" if severity > 0.7 else "BLACKOUT RISK"
-            self._draw_warning(surface, label, (255, 120, 120), y, severity)
+            self._draw_warning(surface, label, (255, 120, 120), message_y, severity,
+                               center_x)
         elif fill_pct > SEVERE_HIGH_THRESHOLD:
             span = MAX_FILL_PCT - SEVERE_HIGH_THRESHOLD
             severity = min(1.0, (fill_pct - SEVERE_HIGH_THRESHOLD) / max(0.01, span))
             self._draw_vignette(surface, AMBER, severity)
             label = "GRID MELTDOWN IMMINENT" if severity > 0.6 else "CRITICAL OVERLOAD"
-            self._draw_warning(surface, label, (255, 190, 110), y, severity)
+            self._draw_warning(surface, label, (255, 190, 110), message_y, severity,
+                               center_x)
         elif state.blackout:
             self._draw_vignette(surface, RED, 0.3)
-            self._draw_warning(surface, "BLACKOUT RISK", (255, 120, 120), y, 0.3)
+            self._draw_warning(surface, "BLACKOUT RISK", (255, 120, 120), message_y,
+                               0.3, center_x)
 
         if state.celebrate_high_score > 0:
             self._draw_success_toast(surface)
@@ -316,7 +353,7 @@ class HUD:
         plate_surf.blit(txt, (10, 6))
         surface.blit(plate_surf, plate.topleft)
 
-    def _draw_warning(self, surface, text, color, y, severity):
+    def _draw_warning(self, surface, text, color, y, severity, center_x=None):
         # Warning icon + text, breathing together. Slow, smooth brightness —
         # no positional jitter, capped well under 1 Hz — since large warning
         # text is exactly the kind of element that shouldn't be strobing.
@@ -330,7 +367,8 @@ class HUD:
         ws.blit(icon, (0, (row_h - icon.get_height()) // 2))
         ws.blit(warn, (icon.get_width() + gap, (row_h - warn.get_height()) // 2))
         ws.set_alpha(int(170 + 85 * abs(math.sin(self._t * (1.2 + 0.8 * severity)))))
-        surface.blit(ws, (w // 2 - total_w // 2, y))
+        surface.blit(ws, ((center_x if center_x is not None else w // 2)
+                          - total_w // 2, y))
 
     def draw_game_over(self, surface, state):
         w, h = surface.get_size()

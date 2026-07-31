@@ -16,6 +16,7 @@ import math
 
 import pygame
 
+from ui import callouts
 from ui.dialogue import (DialogueBox, DialogueState, TypewriterText,
                          get_dialogue_rect)
 from ui.tutorial_data import CONDITIONS, STEPS
@@ -33,16 +34,23 @@ PHASE_CORRECTION = "correction"
 
 
 class TutorialManager:
-    def __init__(self, font, font_small, font_body):
+    def __init__(self, font, font_small, font_body, steps=None, conditions=None,
+                 skip_label="SKIP TUTORIAL"):
+        """`steps` / `conditions` default to the Standard-grid tutorial script.
+        Instructional Mode passes one day's script from ui/instructional_data
+        instead; the schema and the state machine are identical."""
         self.box = DialogueBox(font, font_small, font_body)
         self.typed = TypewriterText()
+        self.steps = steps if steps is not None else STEPS
+        self.conditions = conditions if conditions is not None else CONDITIONS
+        self.skip_label = skip_label
 
         self.state = DialogueState.OPENING
         self.current_step = 0
         self.dialogue_index = 0
         self.phase = PHASE_LINE
         self.completed_step_ids = set()
-        self.portrait = STEPS[0]["portrait"]
+        self.portrait = self.steps[0]["portrait"]
         self.highlight_rect = None
 
         self._hold = 0.0
@@ -54,7 +62,7 @@ class TutorialManager:
 
     @property
     def step(self):
-        return STEPS[self.current_step]
+        return self.steps[self.current_step]
 
     @property
     def active(self) -> bool:
@@ -94,9 +102,9 @@ class TutorialManager:
     def _next_step(self):
         """Walk forward to the next step that has not already been completed."""
         index = self.current_step + 1
-        while index < len(STEPS) and STEPS[index]["id"] in self.completed_step_ids:
+        while index < len(self.steps) and self.steps[index]["id"] in self.completed_step_ids:
             index += 1
-        if index >= len(STEPS):
+        if index >= len(self.steps):
             self.state = DialogueState.CLOSING
             return
         self.current_step = index
@@ -153,7 +161,7 @@ class TutorialManager:
     def skip(self):
         """Skip closes the whole tutorial and marks every step done, so nothing
         can re-open later."""
-        self.completed_step_ids.update(s["id"] for s in STEPS)
+        self.completed_step_ids.update(s["id"] for s in self.steps)
         self.state = DialogueState.CLOSING
 
     # -- update -----------------------------------------------------------
@@ -186,7 +194,7 @@ class TutorialManager:
                         self._resume_after_correction()
 
         elif self.state == DialogueState.WAITING_FOR_GAME_ACTION:
-            condition = CONDITIONS.get(self.step["wait_for"])
+            condition = self.conditions.get(self.step["wait_for"])
             if condition and condition(state, self._ctx):
                 self.complete_step(audio)
 
@@ -238,12 +246,24 @@ class TutorialManager:
                     audio.play("ui_click")
                 self.skip()
                 return True
+            # LEARN MORE must not double as "advance": opening the two-pager
+            # should never also step the dialogue past the thing it explains.
+            if self.box.learn_rect.collidepoint(event.pos):
+                if audio:
+                    audio.play("ui_click")
+                callouts.open_link(self.step.get("learn_more"))
+                return True
             if self.box.cluster_rect.collidepoint(event.pos):
                 self.advance(audio)
                 return True
             if self.state == DialogueState.WAITING_FOR_GAME_ACTION:
                 target = self.highlight_rect
-                if target and target.collidepoint(event.pos):
+                # No target means the step's `highlight` key is missing from the
+                # region dict. Fall OPEN, not closed: with `if target and ...`
+                # a missing key sent every click to _correct(), so it never
+                # reached gameplay, so the wait_for condition could never be
+                # satisfied — an unrecoverable soft-lock from one typo'd key.
+                if target is None or target.collidepoint(event.pos):
                     return False  # the click we asked for: let gameplay have it
                 self._correct(audio)
                 return True       # stray click: don't let it reach the grid
@@ -274,9 +294,10 @@ class TutorialManager:
         screen_rect = surface.get_rect()
         portrait, box_size = self.box.measure(screen_rect, self.portrait, PORTRAIT_MAX_H)
 
-        # The box must never sit on the tank; the highlight it is pointing at is
-        # blocked too, so it can't cover the thing it is asking the player to use.
-        blocked = [self._regions.get(k) for k in ("tank", "city", "spigot_panel",
+        # The box may sit over the city itself (it's the backdrop) but never over
+        # the readouts floating on it, and never over the highlight it is
+        # pointing at — it can't cover the thing it's asking the player to use.
+        blocked = [self._regions.get(k) for k in ("chart", "readout",
                                                   "speed_control")]
         blocked.append(self.highlight_rect)
         cluster = get_dialogue_rect(screen_rect, portrait.get_size(), blocked, box_size)
@@ -288,5 +309,10 @@ class TutorialManager:
         elif self.state == DialogueState.WAITING_FOR_INPUT:
             hint = "SPACE / CLICK to continue"
 
+        # No two-pager written for this step yet -> no button, not a dead one.
+        learn_key = self.step.get("learn_more")
+        learn_label = "LEARN MORE" if callouts.has(learn_key) else None
+
         self.box.draw(surface, portrait, self._p_rect, self.step.get("speaker"),
-                      self.typed, hint=hint, skip_label="SKIP TUTORIAL")
+                      self.typed, hint=hint, skip_label=self.skip_label,
+                      learn_label=learn_label)

@@ -1,8 +1,8 @@
 """Tutorial script and completion conditions, kept out of the render code.
 
 Every step below teaches something the game actually implements: the SUPPLY vs
-DEMAND readout the HUD draws, the reservoir tank, the per-source sliders in the
-spigot panel, and the speed/pause controls. No invented commands.
+DEMAND readout the HUD draws, the isometric city, the per-source plant pins, and
+the speed/pause controls. No invented commands.
 
 `wait_for` names a key in CONDITIONS; `highlight` names a region key that
 main.py supplies from the real layout rects.
@@ -60,21 +60,21 @@ STEPS = [
         ],
     },
     {
-        "id": "tank",
+        "id": "city",
         "portrait": portraits.POINTING,
         "speaker": SPEAKER,
-        "highlight": "tank",
+        "highlight": "city",
         "lines": [
-            "That tank is the same balance, in water. Level holds when supply meets demand.",
-            "Let it run dry and the city browns out.",
-            "Overfill it and you're cooking the hardware. Keep the rim green.",
+            "That's the city, straight down. Every lit block is a block we're carrying.",
+            "Dark at this hour is normal — nobody's up yet. Watch it wake as the day comes.",
+            "Come up short and blocks drop, outskirts first. Push too much and it burns.",
         ],
     },
     {
         "id": "raise_supply",
         "portrait": portraits.POINTING,
         "speaker": SPEAKER,
-        "highlight": "gas_card",
+        "highlight": "pin_gas",
         "wait_for": "supply_raised",
         "lines": [
             "Right now we're short. Demand's climbing and we're behind it.",
@@ -88,7 +88,7 @@ STEPS = [
         },
         "correction": {
             "portrait": portraits.TALKING,
-            "text": "Not there. The handles are on the plant cards up top.",
+            "text": "Not there. The handle floats over the gas plant itself.",
         },
     },
     {
