@@ -106,42 +106,32 @@ def lit_fraction(demand_level: float, fill_pct: float,
     return activity_level(demand_level, awake_min) * served_fraction(fill_pct)
 
 
-def overload_level(fill_pct: float, meltdown: float) -> float:
-    """0..1 severity of oversupply, normalised so 1.0 lands exactly on the
-    difficulty's meltdown line — the visual peak and the run-ending condition
-    always coincide, at every tier."""
-    if fill_pct <= 1.0 or meltdown <= 1.0:
-        return 0.0
-    return _clamp01((fill_pct - 1.0) / (meltdown - 1.0))
+def _ramp(value: float, start: float, end: float) -> float:
+    return max(0.0, min(1.0, (value - start) / (end - start)))
 
 
-# Overload escalation.
-#
-# `overload_level` saturates at 1.0 exactly on the meltdown line, which is right
-# for "how bad is this" but leaves NO resolution in the window where the player
-# is actually about to lose — on Expert, meltdown is 1.15 while fill_pct runs to
-# 2.3. So severity takes a second input, `crisis`, from how long the grid has sat
-# past the line (danger_timer / danger_grace). That is in seconds, identical
-# across tiers, and already bleeds off at 1.5x on recovery, so the fires recede
-# when the player fixes the problem — which is the feedback that makes it a
-# readout rather than decoration.
-FIRE_FROM = 0.55        # `over` at which the first transformer lets go
+def voltage_overload_level(ratio: float) -> float:
+    return _ramp(ratio, 1.01, 1.50)
 
 
-def _ignite_rate(over, crisis):
+def fire_overload_level(ratio: float) -> float:
+    return _ramp(ratio, 1.50, 2.00)
+
+
+def _ignite_rate(fire):
     """New fires per second."""
-    return max(0.0, over - FIRE_FROM) * 4.0 + crisis * 6.0
+    return fire * 8.0
 
 
-def _max_fires(over, crisis):
-    return int(4 + 28 * over + 20 * crisis)
+def _max_fires(fire):
+    return int(round(48 * fire))
 
 
-def _fire_reach(over, crisis):
+def _fire_reach(fire):
     """Fraction of the city that can catch, 0..1, as a share of the
     downtown-first `_buildings` ordering. Starts as a downtown problem and
     spreads outward as things get worse."""
-    return min(1.0, 0.12 + 0.88 * (0.5 * over + 0.5 * crisis))
+    return fire
 
 
 def parabolic_peak(hour: float, center: float, half_width: float) -> float:
@@ -2084,7 +2074,9 @@ class IsoCity:
 
         activity = activity_level(state.demand_level)
         served = served_fraction(state.fill_pct_display)
-        over = overload_level(state.fill_pct_display, state.difficulty.meltdown)
+        ratio = state.total_actual_mw / state.demand_mw if state.demand_mw > 0 else 1.0
+        voltage = voltage_overload_level(ratio)
+        fire = fire_overload_level(ratio)
         day = daylight(state.sim_hour)
         atmosphere = atmosphere or sample_atmosphere(
             state.sim_hour, state.active_event.kind if state.active_event else None)
@@ -2113,13 +2105,9 @@ class IsoCity:
         self._draw_vehicles(layer, traffic_level(state.sim_hour, served), day, dt)
         self._draw_transmission(layer, state, dt)
         self._draw_plants(layer, state, day)
-        # danger_timer also runs on the BLACKOUT side of the band, so it only
-        # means "this grid is cooking" while we are actually oversupplied.
-        crisis = (_clamp01(state.danger_timer / max(0.1, state.difficulty.danger_grace))
-                  if over > 0 else 0.0)
-        self._update_fires(dt, over, crisis)
-        if over > 0.04 or self._fires:
-            self._draw_overload(layer, self._world_rect, over, crisis)
+        self._update_fires(dt, fire)
+        if voltage > 0.0 or fire > 0.0 or self._fires or self._arcs:
+            self._draw_overload(layer, self._world_rect, voltage, fire)
         world.blit(layer, (0, 0))
         self._present(surface, rect)
 
@@ -2243,7 +2231,7 @@ class IsoCity:
             _draw_plant_live(layer, site, level, self.t, night)
             site.sx, site.sy = saved
 
-    def _update_fires(self, dt, over, crisis):
+    def _update_fires(self, dt, fire):
         """Ignite, age and retire transformer fires.
 
         Fires PERSIST. The previous version reseeded its RNG from the clock every
@@ -2257,11 +2245,11 @@ class IsoCity:
             f.age += dt
         self._fires = [f for f in self._fires if f.age < f.life]
 
-        if over <= FIRE_FROM and crisis <= 0.0:
+        if fire <= 0.0:
             return
-        self._ignite_acc += _ignite_rate(over, crisis) * dt
-        cap = _max_fires(over, crisis)
-        reach = _fire_reach(over, crisis)
+        self._ignite_acc += _ignite_rate(fire) * dt
+        cap = _max_fires(fire)
+        reach = _fire_reach(fire)
         while self._ignite_acc >= 1.0:
             self._ignite_acc -= 1.0
             if len(self._fires) >= cap or not self._buildings:
@@ -2277,23 +2265,23 @@ class IsoCity:
                                      6.0 + self._rng.random() * 8.0,
                                      self._rng.random()))
 
-    def _draw_overload(self, layer, rect, over, crisis):
+    def _draw_overload(self, layer, rect, voltage, fire):
         """Oversupply: the grid cooking itself.
 
         The full-rect wash keeps its ~0.25 Hz envelope at EVERY severity —
-        `crisis` raises its peak alpha and nothing else. Speeding a large-area
+        severity raises its peak alpha and nothing else. Speeding a large-area
         pulse up with severity is the intuitive move and it is exactly the
-        photosensitive-seizure trigger this file refuses to ship. Flames and
-        arcs may flicker faster because they are a few pixels each.
+        photosensitive-seizure trigger this file refuses to ship. Above 40%,
+        local arcs may flicker faster because they are only a few pixels each.
         """
         pulse = 0.5 + 0.5 * math.sin(self.t * 1.6)
-        a = int((46 + 26 * crisis) * over * (0.55 + 0.45 * pulse))
+        a = int(46 * voltage * (0.55 + 0.45 * pulse))
         if a > 3:
             wash = pygame.Surface(rect.size, pygame.SRCALPHA)
             wash.fill((*LIGHT_OVERLOAD, a))
             layer.blit(wash, (0, 0))
 
-        for f in self._fires:
+        for f in self._fires if fire > 0.0 else ():
             k = f.age / f.life
             size = 1.0 + 3.0 * math.sin(math.pi * k)        # ignite, peak, die
             r = size * (0.85 + 0.15 * math.sin(self.t * 5.0 + f.phase * 6.3))
@@ -2314,20 +2302,21 @@ class IsoCity:
                    f.phase, SMOKE, 3, 14, puffs=4)
 
         # Arcing at the switchyards: brief, tiny, and allowed to be sharp.
-        if crisis > 0.2 and self._arc_points:
-            self._arc_acc += crisis * 3.0 * (1.0 / 60.0)
+        if voltage > 0.4 and self._arc_points:
+            self._arc_acc += voltage * 3.0 * (1.0 / 60.0)
             while self._arc_acc >= 1.0 and len(self._arcs) < 3:
                 self._arc_acc -= 1.0
                 ax, ay = self._rng.choice(self._arc_points)
                 pts = [(ax + self._rng.randint(-5, 5), ay + self._rng.randint(-7, 1))
                        for _ in range(4)]
                 self._arcs.append([0.0, pts])
-        for arc in self._arcs:
+        for arc in self._arcs if voltage > 0.4 else ():
             arc[0] += 1.0 / 60.0
             if arc[0] < 0.12:
                 pygame.draw.lines(layer, (214, 236, 255), False, arc[1], 1)
                 pygame.draw.circle(layer, (180, 214, 255), arc[1][0], 2, 1)
-        self._arcs = [a for a in self._arcs if a[0] < 0.12]
+        self._arcs = ([a for a in self._arcs if a[0] < 0.12]
+                      if voltage > 0.4 else [])
 
     # -- readout -----------------------------------------------------------
     def draw_homes_label(self, surface, anchor, homes_out: float, homes_total: float):

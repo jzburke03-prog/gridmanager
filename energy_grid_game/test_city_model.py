@@ -16,15 +16,15 @@ import pygame
 pygame.init()
 pygame.display.set_mode((1, 1))     # sprite baking needs a video surface
 
-from ui.iso_city import (AWAKE_MIN, FEEDER_SIZE, FIRE_FROM,
+from ui.iso_city import (AWAKE_MIN, FEEDER_SIZE,
                          ILLUSTRATIVE_POPULATION, Camera, IsoCity,
                          PlantSite, TW, TH,
                          _Vehicle,
                          _fire_reach, _ignite_rate, _max_fires,
                          _draw_plant_live, _plant_static_sprite, _vehicle_sprite,
-                         activity_level, lit_fraction, overload_level,
+                         activity_level, fire_overload_level, lit_fraction,
                          parabolic_peak, served_fraction, state_population,
-                         traffic_level,
+                         traffic_level, voltage_overload_level,
                          detail_levels_for_zoom, required_world_size,
                          vehicle_density_for_zoom, distribution_level)
 from ui.iso_city import (street_route, cooling_tower_width, solar_panel_layout,
@@ -632,49 +632,26 @@ def test_lit_fraction():
     assert lit_fraction(0.6, 0.4) < lit_fraction(0.6, 0.9)
 
 
-def test_overload_level():
-    # Balanced or short: the city is never on fire for being under-supplied.
-    assert overload_level(1.0, 1.75) == 0.0
-    assert overload_level(0.4, 1.75) == 0.0
-
-    # 1.0 lands exactly on the meltdown line, whatever the difficulty, so the
-    # visual peak and the run-ending condition always coincide.
-    for meltdown in (1.15, 1.40, 1.75, 2.10):
-        assert overload_level(meltdown, meltdown) == 1.0
-        assert overload_level(meltdown + 0.5, meltdown) == 1.0  # clamped
-
-    # Same supply ratio, different tiers -> different severity. A fixed 150%
-    # threshold would be catastrophic on Easy and already too late on Expert.
-    assert overload_level(1.5, 1.15) == 1.0
-    assert overload_level(1.5, 2.10) < 0.5
-
-    # Fires (over > FIRE_FROM, see _ignite_rate) begin near 150% on Moderate.
-    assert 0.5 < overload_level(1.5, 1.75) < 0.8
+def test_absolute_overload_visual_thresholds():
+    assert voltage_overload_level(1.0) == 0.0
+    assert voltage_overload_level(1.01) == 0.0
+    assert 0.0 < voltage_overload_level(1.20) < 1.0
+    assert voltage_overload_level(1.50) == 1.0
+    assert fire_overload_level(1.49) == 0.0
+    assert fire_overload_level(1.50) == 0.0
+    assert 0.0 < fire_overload_level(1.75) < 1.0
+    assert fire_overload_level(2.00) == 1.0
+    assert fire_overload_level(2.50) == 1.0
 
 
-def test_overload_escalation():
-    """`over` alone saturates at the meltdown line, so it carries no information
-    through the window where the player is about to lose — on Expert that line
-    is 1.15 while fill_pct runs to 2.3. `crisis` (time spent past the line) is
-    the second axis, and every escalation term must rise on BOTH.
-    """
-    # monotonic in over, at fixed crisis...
+def test_fire_escalation_is_monotonic_from_150_to_200_percent():
+    severities = [fire_overload_level(r) for r in (1.50, 1.65, 1.80, 2.00)]
+    assert severities == sorted(severities)
     for fn in (_ignite_rate, _max_fires, _fire_reach):
-        assert fn(0.6, 0.0) <= fn(0.8, 0.0) <= fn(1.0, 0.0), fn.__name__
-        # ...and in crisis, at fixed over — this is the part `over` alone lost
-        assert fn(1.0, 0.0) < fn(1.0, 0.5) < fn(1.0, 1.0), fn.__name__
-
-    # A grid inside its limits never burns, however long it has been there.
-    assert _ignite_rate(0.0, 0.0) == 0.0
-    assert _ignite_rate(FIRE_FROM, 0.0) == 0.0
-
-    # Fires start as a downtown problem and end as a city-wide one, but the
-    # reach is a fraction of the building list, so it can never exceed all of it.
-    assert _fire_reach(FIRE_FROM, 0.0) < 0.6
-    assert _fire_reach(1.0, 1.0) <= 1.0
-    for o in (0.0, 0.5, 1.0):
-        for c in (0.0, 0.5, 1.0):
-            assert 0.0 < _fire_reach(o, c) <= 1.0
+        values = [fn(level) for level in severities]
+        assert values == sorted(values), fn.__name__
+    assert _max_fires(severities[0]) == 0
+    assert _fire_reach(severities[-1]) == 1.0
 
 
 def test_traffic_has_smooth_parabolic_rush_hour_peaks():

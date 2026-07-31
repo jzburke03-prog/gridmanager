@@ -143,6 +143,19 @@ def capture(out_dir):
         for _ in range(frames):
             render_game(frame, st, w)
 
+    def set_supply_ratio(st, ratio):
+        remaining = st.demand_mw * ratio
+        for source in st.sources:
+            pct = min(1.0, remaining / source.effective_max_mw)
+            source.set_handle(pct)
+            source.actual_pct = pct
+            remaining -= source.current_output_mw
+        assert abs(st.total_actual_mw / st.demand_mw - ratio) < 1e-9
+        st.fill_pct = st.fill_pct_display = ratio
+        st.blackout = False
+        st.overflow = ratio >= 1.0
+        w["hud"]._ratio_display = ratio
+
     # --- menu screens ---
     menu = w["menu"]
     for st_id, name in ((TITLE, "01_title"), (MODE, "02_mode"),
@@ -245,7 +258,22 @@ def capture(out_dir):
     settle(st4, 45)
     save("22_offline_plant_flow")
 
-    print(f"captured 22 moments to {out_dir}")
+    # Absolute overload ladder: warm voltage tint begins above 101%, local
+    # arcing is fully active at 150%, and fires reach the whole city at 200%.
+    st4.sim_hour = 4.0
+    st4.demand_level = st4.demand_profile.level_at(st4.sim_hour)
+    for ratio, frames, name in ((1.01, 1, "23_overload_101"),
+                                (1.50, 22, "24_overload_150"),
+                                (2.00, 120, "25_overload_200")):
+        set_supply_ratio(st4, ratio)
+        settle(st4, frames)
+        if ratio == 1.50:
+            assert w["city"]._arcs
+        elif ratio == 2.00:
+            assert w["city"]._fires
+        save(name)
+
+    print(f"captured 25 moments to {out_dir}")
 
 
 def main():
