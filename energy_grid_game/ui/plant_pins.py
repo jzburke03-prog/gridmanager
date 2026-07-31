@@ -255,6 +255,14 @@ class PlantPins:
         name = self.font_small.render(source.key.upper(), True, TEXT)
         output = self.font_small.render(
             f"{source.current_output_mw:.0f} MW", True, TEXT)
+        text_width = rect.width - 20
+        if name.get_width() + output.get_width() > text_width:
+            scale = text_width / (name.get_width() + output.get_width())
+            name_width = round(name.get_width() * scale)
+            name = pygame.transform.scale(
+                name, (name_width, name.get_height()))
+            output = pygame.transform.scale(
+                output, (text_width - name_width, output.get_height()))
         surface.blit(name, (rect.left + 8, rect.centery - name.get_height() // 2))
         surface.blit(output, (rect.right - output.get_width() - 8,
                               rect.centery - output.get_height() // 2))

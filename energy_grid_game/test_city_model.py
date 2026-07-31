@@ -47,8 +47,8 @@ def _font(size):
 
 
 def _pin_source(key):
-    names = {"gas": "Gas (CC)", "wind": "Wind"}
-    capacities = {"gas": 750.0, "wind": 225.0}
+    names = {"gas": "Gas (CC)", "nuclear": "Nuclear", "wind": "Wind"}
+    capacities = {"gas": 750.0, "nuclear": 150.0, "wind": 225.0}
     source = SimpleNamespace(
         key=key,
         name=names[key],
@@ -445,6 +445,29 @@ def test_edge_tab_draws_chevron_inward_from_viewport_edge():
     surface = pygame.Surface(viewport.size, pygame.SRCALPHA)
     item = pins.draw(surface, [source], markers, (), viewport)["gas"]
     assert surface.get_at((item["rect"].left - 5, item["rect"].centery)).a > 0
+
+
+def test_edge_tab_text_does_not_overlap_at_actual_font():
+    class RecordingSurface(pygame.Surface):
+        def __init__(self, size):
+            super().__init__(size, pygame.SRCALPHA)
+            self.blit_rects = []
+
+        def blit(self, source, dest, *args, **kwargs):
+            topleft = dest.topleft if isinstance(dest, pygame.Rect) else dest
+            self.blit_rects.append(source.get_rect(topleft=topleft))
+            return super().blit(source, dest, *args, **kwargs)
+
+    pins = PlantPins(_font(16), _font(13), _font(16))
+    viewport = pygame.Rect(0, 0, 800, 500)
+    source = _pin_source("nuclear")
+    source.current_output_mw = 150.0
+    markers = {"nuclear": {"target": (1100, 260), "anchor": (774, 260),
+                           "visible": False}}
+    surface = RecordingSurface(viewport.size)
+    pins.draw(surface, [source], markers, (), viewport)
+    name_rect, output_rect = surface.blit_rects[-2:]
+    assert name_rect.right + 4 <= output_rect.left
 
 
 def test_edge_tab_click_requests_camera_focus():
