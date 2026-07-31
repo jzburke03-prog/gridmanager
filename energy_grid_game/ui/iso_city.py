@@ -144,13 +144,10 @@ def _fire_reach(over, crisis):
     return min(1.0, 0.12 + 0.88 * (0.5 * over + 0.5 * crisis))
 
 
-# Traffic follows the clock, not the grid: cars do not run on electricity.
-# Hourly weights, linearly interpolated and continuous across midnight.
-_TRAFFIC_BY_HOUR = [
-    0.06, 0.04, 0.04, 0.05, 0.10, 0.26, 0.55, 0.82,   # 00-07
-    0.95, 1.00, 0.86, 0.80, 0.78, 0.80, 0.82, 0.88,   # 08-15
-    0.96, 1.00, 0.92, 0.74, 0.58, 0.44, 0.30, 0.14,   # 16-23
-]
+def parabolic_peak(hour: float, center: float, half_width: float) -> float:
+    distance = abs((hour - center + 12.0) % 24.0 - 12.0)
+    x = distance / half_width
+    return max(0.0, 1.0 - x * x)
 
 
 def traffic_level(sim_hour: float, served: float = 1.0,
@@ -158,12 +155,11 @@ def traffic_level(sim_hour: float, served: float = 1.0,
     """Vehicles on the road, 0..1. A shed grid damps activity (dark signals,
     people staying put) but never kills it."""
     h = sim_hour % 24.0
-    i = int(h)
-    frac = h - i
-    base = (_TRAFFIC_BY_HOUR[i] * (1.0 - frac)
-            + _TRAFFIC_BY_HOUR[(i + 1) % 24] * frac)
-    damp = 0.55 + 0.45 * _clamp01(served)
-    return max(traffic_min, base * damp)
+    daylight_base = max(0.0, math.sin(math.pi * (h - 5.0) / 17.0))
+    level = (0.06 + 0.28 * daylight_base
+             + 0.62 * parabolic_peak(h, 9.0, 1.5)
+             + 0.70 * parabolic_peak(h, 17.0, 1.5))
+    return max(traffic_min, min(1.0, level * (0.65 + 0.35 * served)))
 
 
 # ---------------------------------------------------------------------------
@@ -1272,7 +1268,7 @@ VEHICLE_KINDS = [
     ("truck", (150, 152, 158), 2),
     ("service", (232, 146, 54), 1),
 ]
-MAX_VEHICLES = 260
+MAX_VEHICLES = 96
 
 # Travel direction on screen, per orientation, in half-tile steps.
 # +1 col moves (+TW/2, +TH/2); +1 row moves (-TW/2, +TH/2). `across` is the
@@ -1379,7 +1375,17 @@ def _vehicle_sprite(kind, color, orient, night):
 
 
 def vehicle_density_for_zoom(zoom):
-    return {1: 0.42, 2: 0.76, 4: 1.0}[zoom]
+    return {1: 0.24, 2: 0.48, 4: 0.72}[zoom]
+
+
+def road_neighbors(tiles: dict) -> dict[tuple[int, int],
+                                        tuple[tuple[int, int], ...]]:
+    offsets = ((1, 0), (-1, 0), (0, 1), (0, -1))
+    roads = {tile for tile, (kind, _extra) in tiles.items() if kind == "road"}
+    return {tile: tuple((tile[0] + dc, tile[1] + dr)
+                        for dc, dr in offsets
+                        if (tile[0] + dc, tile[1] + dr) in roads)
+            for tile in roads}
 
 
 class _Fire:
@@ -1392,15 +1398,35 @@ class _Fire:
 
 
 class _Vehicle:
-    __slots__ = ("axis", "line", "pos", "lo", "hi", "speed", "kind", "color")
+    __slots__ = ("tile", "next_tile", "previous_tile", "progress",
+                 "speed", "kind", "color")
 
-    def __init__(self, axis, line, lo, hi, rng):
-        self.axis, self.line, self.lo, self.hi = axis, line, lo, hi
-        self.pos = rng.uniform(lo, hi)
-        self.speed = rng.uniform(1.4, 3.0) * rng.choice((1, -1))
+    def __init__(self, tile, next_tile, rng):
+        self.tile, self.next_tile = tile, next_tile
+        self.previous_tile = tile
+        self.progress = rng.random()
+        self.speed = rng.uniform(0.8, 1.6)
         kind, color, _w = rng.choices(
             VEHICLE_KINDS, weights=[w for *_r, w in VEHICLE_KINDS])[0]
         self.kind, self.color = kind, color
+
+    def advance(self, dt, neighbors, rng) -> None:
+        self.progress += self.speed * dt
+        while self.progress >= 1.0:
+            old_tile = self.tile
+            arrived = self.next_tile
+            candidates = neighbors.get(arrived, ())
+            onward = tuple(tile for tile in candidates if tile != old_tile)
+            if onward:
+                candidates = onward
+            if not candidates:
+                self.tile = self.next_tile = arrived
+                self.previous_tile = arrived
+                self.progress = 0.0
+                return
+            self.tile = self.previous_tile = arrived
+            self.next_tile = rng.choice(candidates)
+            self.progress -= 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -1428,7 +1454,7 @@ class IsoCity:
         self._world_rect = pygame.Rect(0, 0, 1, 1)
         self._plants = []
         self._vehicles = []
-        self._road_lines = []
+        self._road_neighbors = {}
         self._transformers = []
         self._distribution_flows = []
         self._service_flows = []
@@ -1776,39 +1802,20 @@ class IsoCity:
                                  seed=abs(hash(("svc", end_col, end_row))) & 0xFFFF)))
 
     def _make_roads(self, rng):
-        """Collect each street as CONTIGUOUS RUNS so vehicles have tarmac to
-        drive on.
-
-        Storing only a line's min and max is not enough: the river cuts gaps in
-        the lattice, and a vehicle interpolating between the extremes drove
-        straight across open water. Splitting each line at its gaps keeps
-        traffic on the road, and costs one sort per line at bake time.
-        """
-        axes = {}
-        for (col, row), (kind, _v) in self._tiles.items():
-            if kind != "road":
-                continue
-            if col % ROAD_SPACING == 0:
-                axes.setdefault((1, col), []).append(row)
-            if row % ROAD_SPACING == 0:
-                axes.setdefault((0, row), []).append(col)
-
-        self._road_lines = []
-        for (axis, idx), vals in axes.items():
-            vals = sorted(set(vals))
-            run_start = vals[0]
-            for k in range(1, len(vals) + 1):
-                if k == len(vals) or vals[k] != vals[k - 1] + 1:
-                    if vals[k - 1] - run_start >= 4:
-                        self._road_lines.append((axis, idx, run_start, vals[k - 1]))
-                    if k < len(vals):
-                        run_start = vals[k]
+        """Build the street graph and seed vehicles on connected road edges."""
+        self._road_neighbors = road_neighbors(self._tiles)
+        edges = [(tile, neighbor)
+                 for tile in sorted(self._road_neighbors)
+                 for neighbor in self._road_neighbors[tile]
+                 if tile < neighbor]
         self._vehicles = []
-        if not self._road_lines:
+        if not edges:
             return
         for _ in range(MAX_VEHICLES):
-            axis, line, lo, hi = rng.choice(self._road_lines)
-            self._vehicles.append(_Vehicle(axis, line, lo, hi, rng))
+            tile, next_tile = rng.choice(edges)
+            if rng.random() < 0.5:
+                tile, next_tile = next_tile, tile
+            self._vehicles.append(_Vehicle(tile, next_tile, rng))
 
     # -- baking ------------------------------------------------------------
     def _bake(self, rect, population, fleet):
@@ -2103,7 +2110,7 @@ class IsoCity:
 
         layer = self._overlay
         layer.fill((0, 0, 0, 0))
-        self._draw_vehicles(layer, traffic_level(state.sim_hour, served), day)
+        self._draw_vehicles(layer, traffic_level(state.sim_hour, served), day, dt)
         self._draw_transmission(layer, state, dt)
         self._draw_plants(layer, state, day)
         # danger_timer also runs on the BLACKOUT side of the band, so it only
@@ -2171,23 +2178,23 @@ class IsoCity:
                 return True
         return False
 
-    def _draw_vehicles(self, layer, level, day):
+    def _draw_vehicles(self, layer, level, day, dt):
         n = int(len(self._vehicles) * level * vehicle_density_for_zoom(self.camera.zoom))
         ox, oy = self._origin
         night = day < 0.35
         ax, ay = _VEH_ANCHOR
         for veh in self._vehicles[:n]:
-            veh.pos += veh.speed * (1.0 / 60.0) * 6.0
-            if veh.pos > veh.hi or veh.pos < veh.lo:
-                veh.speed = -veh.speed
-                veh.pos = max(veh.lo, min(veh.hi, veh.pos))
-            col, row = ((veh.pos, veh.line) if veh.axis == 0
-                        else (veh.line, veh.pos))
+            veh.advance(dt, self._road_neighbors, self._rng)
+            dc = veh.next_tile[0] - veh.tile[0]
+            dr = veh.next_tile[1] - veh.tile[1]
+            col = veh.tile[0] + dc * veh.progress - dr * 0.10
+            row = veh.tile[1] + dr * veh.progress + dc * 0.10
             if self._occluded(col, row):
                 continue
             sx, sy = iso_xy(col, row)
-            spr = _vehicle_sprite(veh.kind, veh.color,
-                                  veh.axis * 2 + (veh.speed > 0), night)
+            orient = ((1 if dc > 0 else 0) if dc
+                      else (3 if dr > 0 else 2))
+            spr = _vehicle_sprite(veh.kind, veh.color, orient, night)
             layer.blit(spr, (sx + ox + TW // 2 - ax, sy + oy + TH // 2 - ay))
 
     def _draw_transmission(self, layer, state, dt):

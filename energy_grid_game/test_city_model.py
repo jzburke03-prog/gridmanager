@@ -19,10 +19,12 @@ pygame.display.set_mode((1, 1))     # sprite baking needs a video surface
 from ui.iso_city import (AWAKE_MIN, FEEDER_SIZE, FIRE_FROM,
                          ILLUSTRATIVE_POPULATION, Camera, IsoCity,
                          PlantSite, TW, TH,
+                         _Vehicle,
                          _fire_reach, _ignite_rate, _max_fires,
                          _draw_plant_live, _plant_static_sprite, _vehicle_sprite,
                          activity_level, lit_fraction, overload_level,
-                         served_fraction, state_population, traffic_level,
+                         parabolic_peak, served_fraction, state_population,
+                         traffic_level,
                          detail_levels_for_zoom, required_world_size,
                          vehicle_density_for_zoom, distribution_level)
 from ui.iso_city import (street_route, cooling_tower_width, solar_panel_layout,
@@ -675,28 +677,20 @@ def test_overload_escalation():
             assert 0.0 < _fire_reach(o, c) <= 1.0
 
 
-def test_traffic_level():
-    """Traffic follows the clock, not the grid — cars don't run on electricity."""
-    # Roads are never completely still, even in a total blackout.
-    assert traffic_level(3.0, served=0.0) > 0.0
+def test_traffic_has_smooth_parabolic_rush_hour_peaks():
+    assert traffic_level(9.0) > traffic_level(12.0) > traffic_level(3.0)
+    assert traffic_level(17.0) > traffic_level(12.0)
+    assert traffic_level(8.0) < traffic_level(9.0) > traffic_level(10.0)
+    assert traffic_level(16.0) < traffic_level(17.0) > traffic_level(18.0)
+    for center in (9.0, 17.0):
+        assert abs(traffic_level(center - 0.1) -
+                   traffic_level(center + 0.1)) < 0.04
 
-    # Twin rush hours are the busiest moments of the day.
-    morning, evening = traffic_level(9.0), traffic_level(17.0)
-    midday, night = traffic_level(13.0), traffic_level(3.0)
-    assert morning > midday and evening > midday
-    assert midday > 0.6, "midday should stay busy, not just the peaks"
 
-    # Precipitous fall after 23:00 into a deep small-hours trough.
-    assert traffic_level(22.0) > traffic_level(23.0) > traffic_level(0.5)
-    assert night < 0.12
-    assert traffic_level(3.0) < traffic_level(6.5) < traffic_level(8.0)
-
-    # Continuous across the midnight wrap — no discontinuity at the seam.
-    assert abs(traffic_level(23.99) - traffic_level(0.01)) < 0.02
-
-    # A shed grid damps activity but never kills it.
-    assert traffic_level(9.0, served=0.0) < traffic_level(9.0, served=1.0)
-    assert traffic_level(9.0, served=0.0) > 0.0
+def test_parabolic_peak_falls_smoothly_to_zero_at_its_edges():
+    assert parabolic_peak(9.0, 9.0, 1.5) == 1.0
+    assert parabolic_peak(9.75, 9.0, 1.5) == 0.75
+    assert parabolic_peak(10.5, 9.0, 1.5) == 0.0
 
 
 def test_priority_actually_lights_that_fraction():
@@ -773,20 +767,32 @@ def test_shedding_still_protects_the_core():
             < sum(map(dist, shed)) / len(shed))
 
 
-def test_vehicles_only_drive_on_road():
-    """Vehicle routes are contiguous runs of road tiles.
-
-    Storing only each street's min and max let traffic interpolate across the
-    gap the river cuts in the lattice — buses drove over open water. Runs must
-    contain nothing but road.
-    """
+def test_road_graph_contains_only_adjacent_road_tiles():
     city = _city(200_000)
-    assert city._road_lines, "no drivable roads at all"
-    for axis, idx, lo, hi in city._road_lines:
-        for v in range(lo, hi + 1):
-            cr = (v, idx) if axis == 0 else (idx, v)
-            kind = city._tiles.get(cr, (None, None))[0]
-            assert kind == "road", f"run ({axis},{idx}) crosses {kind} at {cr}"
+    assert city._road_neighbors
+    for tile, neighbors in city._road_neighbors.items():
+        assert city._tiles[tile][0] == "road"
+        for neighbor in neighbors:
+            assert city._tiles[neighbor][0] == "road"
+            assert abs(tile[0] - neighbor[0]) + abs(tile[1] - neighbor[1]) == 1
+
+
+def test_vehicle_turns_without_immediate_uturn_when_exit_exists():
+    neighbors = {(0, 0): ((1, 0),),
+                 (1, 0): ((0, 0), (2, 0), (1, 1)),
+                 (2, 0): ((1, 0),),
+                 (1, 1): ((1, 0),)}
+    vehicle = _Vehicle((0, 0), (1, 0), random.Random(4))
+    vehicle.progress = 0.99
+    vehicle.advance(1.0, neighbors, random.Random(4))
+    assert vehicle.previous_tile == (1, 0)
+    assert vehicle.next_tile in ((2, 0), (1, 1))
+
+
+def test_vehicle_population_is_intentionally_sparse():
+    city = _city(200_000)
+    assert 50 <= len(city._vehicles) <= 110
+    assert vehicle_density_for_zoom(4) < 0.8
 
 
 def test_buildings_occlude_traffic():
