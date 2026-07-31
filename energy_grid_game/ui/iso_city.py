@@ -651,6 +651,15 @@ def _lot(surf, x, y, w, d, color=LOT):
     return back, right, front, left
 
 
+def solar_lot_polygon(x, y):
+    """The complete 13-by-10-tile solar lot, including its far-left corner."""
+    back = (x - 52, y - 34)
+    return (back,
+            (back[0] + 13 * TW // 2, back[1] + 13 * TH // 2),
+            (back[0] + 3 * TW // 2, back[1] + 23 * TH // 2),
+            (back[0] - 10 * TW // 2, back[1] + 10 * TH // 2))
+
+
 def _parking(surf, x, y, n=6):
     """A row of parked cars — pure SC2K, and the cheapest possible cue that
     something industrial is staffed and running."""
@@ -731,6 +740,13 @@ def cooling_tower_width(t, rim_ratio=0.82, waist_ratio=0.60):
     return waist_ratio + (rim_ratio - waist_ratio) * f ** 1.35
 
 
+def centered_ellipse_rect(cx, cy, rx, ry):
+    half_w = max(1, math.ceil(rx))
+    half_h = max(1, math.ceil(ry))
+    return pygame.Rect(round(cx) - half_w, round(cy) - half_h,
+                       half_w * 2 + 1, half_h * 2 + 1)
+
+
 def _cooling_tower(surf, x, base_y, h, r):
     """Hyperboloid natural-draught tower — the silhouette that says 'nuclear'.
 
@@ -752,6 +768,7 @@ def _cooling_tower(surf, x, base_y, h, r):
     pygame.draw.ellipse(surf, (128, 132, 132),
                         (int(x - r * 1.14), base_y - 4, int(r * 2.28), max(4, int(r * 0.48))))
 
+    center_x = round(x)
     for i in range(h):
         t = i / max(1, h - 1)
         w = profile(t)
@@ -760,28 +777,28 @@ def _cooling_tower(surf, x, base_y, h, r):
         for dx in range(-int(w), int(w) + 1):
             nt = max(-1.0, min(1.0, dx / w))
             f = 0.36 + 0.74 * max(0.0, math.cos(math.asin(nt) - light))
-            surf.set_at((int(x + dx), int(y)), shade(CONCRETE, min(1.15, f * depth)))
+            surf.set_at((center_x + dx, int(y)), shade(CONCRETE, min(1.15, f * depth)))
 
     # rim: outer lip, then the shaft mouth you can see down into
     wt = profile(1.0)
-    ry = max(2, int(wt * 0.42))
     top = base_y - h
+    outer_lip = centered_ellipse_rect(center_x, top, wt * 1.05, wt * 0.42)
+    inner_lip = outer_lip.inflate(-2, -2)
+    opening = inner_lip.inflate(-max(2, round(wt * 0.48)),
+                                 -max(2, round(wt * 0.20)))
     pygame.draw.ellipse(surf, shade(CONCRETE, 0.72),
-                        (int(x - wt * 1.05), top - ry, int(wt * 2.1), ry * 2))
+                        outer_lip)
     pygame.draw.ellipse(surf, shade(CONCRETE, 1.18),
-                        (int(x - wt), top - ry - 1, int(wt * 2), ry * 2))
-    pygame.draw.ellipse(surf, (48, 52, 58),
-                        (int(x - wt * 0.76), top - int(ry * 0.76) - 1,
-                         int(wt * 1.52), max(2, int(ry * 1.52))))
-    pygame.draw.arc(surf, (220, 220, 216),
-                    (int(x - wt), top - ry - 1, int(wt * 2), ry * 2),
+                        inner_lip)
+    pygame.draw.ellipse(surf, (48, 52, 58), opening)
+    pygame.draw.arc(surf, (220, 220, 216), inner_lip,
                     math.pi, math.tau, 1)
 
     # A continuous flared skirt reads cleanly at game scale; individual intake
     # legs produced a jagged, detached base.
     wb = profile(0.0)
     pygame.draw.arc(surf, shade(CONCRETE, 0.45),
-                    (int(x - wb), base_y - max(2, int(wb * 0.22)),
+                    (center_x - int(wb), base_y - max(2, int(wb * 0.22)),
                      int(wb * 2), max(3, int(wb * 0.44))), 0, math.pi, 1)
 
 
@@ -1031,8 +1048,6 @@ def _draw_plant_static(surf, key, x, y, rng):
               light=(132, 142, 148), dark=(68, 78, 86), roof=(94, 104, 110))
         _tank(surf, x - 88, y + 24, 4, 10)
         _tank(surf, x - 76, y + 30, 4, 10)
-        pygame.draw.line(surf, (206, 170, 74),
-                         (x - 83, y + 20), (x - 26, y + 43), 1)
         _parking(surf, x - 62, y + 46, 5)
         _switchyard(surf, x + 24, y + 44, 3)
     elif key == "peaker":
@@ -1044,13 +1059,27 @@ def _draw_plant_static(surf, key, x, y, rng):
         _tank(surf, x + 20, y + 14, 4, 10)                     # fuel oil backup
         _switchyard(surf, x - 30, y + 20, 2)
     elif key == "solar":
-        back = (x - 52, y - 34)
-        _lot(surf, *back, 13, 10, color=(92, 102, 78))
+        lot = solar_lot_polygon(x, y)
+        back = lot[0]
+        pygame.draw.polygon(surf, (92, 102, 78), lot)
+        pygame.draw.lines(surf, LOT_EDGE, True, lot)
         # Two genuine isometric gravel strips divide the field into quadrants.
+        lot_rect = pygame.Rect(min(px for px, _py in lot), min(py for _px, py in lot),
+                               max(px for px, _py in lot) - min(px for px, _py in lot) + 1,
+                               max(py for _px, py in lot) - min(py for _px, py in lot) + 1)
+        strips = pygame.Surface(lot_rect.size, pygame.SRCALPHA)
         cx, cy = iso_xy(6, 0)
-        _lot(surf, back[0] + cx, back[1] + cy, 1, 10, color=(156, 148, 118))
+        _lot(strips, back[0] + cx - lot_rect.left, back[1] + cy - lot_rect.top,
+             1, 10, color=(156, 148, 118))
         rx, ry = iso_xy(0, 5)
-        _lot(surf, back[0] + rx, back[1] + ry, 13, 1, color=(150, 144, 116))
+        _lot(strips, back[0] + rx - lot_rect.left, back[1] + ry - lot_rect.top,
+             13, 1, color=(150, 144, 116))
+        mask = pygame.Surface(lot_rect.size, pygame.SRCALPHA)
+        local_lot = [(px - lot_rect.left, py - lot_rect.top) for px, py in lot]
+        pygame.draw.polygon(mask, (255, 255, 255, 255), local_lot)
+        pygame.draw.lines(mask, (0, 0, 0, 0), True, local_lot, 2)
+        strips.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        surf.blit(strips, lot_rect.topleft)
         for _group, dx, dy in solar_panel_layout():
             px, py = x + dx, y + dy
             face = [(px, py), (px + 11, py + 5),
@@ -1140,8 +1169,8 @@ def _draw_plant_static(surf, key, x, y, rng):
 
 def _plant_static_sprite(key, rng):
     """Render one plant into a tight local surface and return (sprite, offset)."""
-    origin = (120, 90)
-    canvas = pygame.Surface((240, 180), pygame.SRCALPHA)
+    origin = (140, 90)
+    canvas = pygame.Surface((280, 180), pygame.SRCALPHA)
     _draw_plant_static(canvas, key, origin[0], origin[1], rng)
     bounds = canvas.get_bounding_rect()
     sprite = canvas.subsurface(bounds).copy()
@@ -1160,10 +1189,11 @@ def _draw_plant_live(layer, site, level, t, night):
             layer.fill((236, 70, 58), (int(bx), int(by), 1, 1))
 
     if key == "nuclear":
-        _plume(layer, x + 2, y - 15, level, t, site.phase, STEAM, 8, 34)
-        _plume(layer, x + 28, y - 2, level, t, site.phase + 0.4, STEAM, 7, 28)
-        beacon(x + 2, y - 16)
-        beacon(x + 28, y - 3, 3.1)
+        front_tower_x, rear_tower_x = int(x + 2), int(x + 28)
+        _plume(layer, front_tower_x, y - 15, level, t, site.phase, STEAM, 8, 34)
+        _plume(layer, rear_tower_x, y - 2, level, t, site.phase + 0.4, STEAM, 7, 28)
+        beacon(front_tower_x, y - 16)
+        beacon(rear_tower_x, y - 3, 3.1)
         if night and level > 0.05:
             layer.fill(LIGHT_WARM, (x - 40, y - 2, 2, 1))
     elif key == "coal":

@@ -20,13 +20,14 @@ from ui.iso_city import (AWAKE_MIN, FEEDER_SIZE, FIRE_FROM,
                          ILLUSTRATIVE_POPULATION, Camera, IsoCity,
                          PlantSite, TW, TH,
                          _fire_reach, _ignite_rate, _max_fires,
-                         _plant_static_sprite, _vehicle_sprite,
+                         _draw_plant_live, _plant_static_sprite, _vehicle_sprite,
                          activity_level, lit_fraction, overload_level,
                          served_fraction, state_population, traffic_level,
                          detail_levels_for_zoom, required_world_size,
                          vehicle_density_for_zoom, distribution_level)
 from ui.iso_city import (street_route, cooling_tower_width, solar_panel_layout,
-                         gas_cc_train_layout)
+                         gas_cc_train_layout, centered_ellipse_rect,
+                         solar_lot_polygon)
 from ui.grid_flow import Flow
 from ui.time_of_day import daylight
 from ui.plant_pins import PIN_W, PlantPins
@@ -365,6 +366,40 @@ def test_cooling_tower_profile_is_flared_and_pinched():
     assert base > rim > waist
     assert cooling_tower_width(0.25) > waist
     assert cooling_tower_width(0.82) > waist
+
+
+def test_cooling_tower_rim_rect_is_pixel_centered():
+    for radius in (7.2, 9.8, 11.4):
+        rect = centered_ellipse_rect(60, 40, radius, radius * 0.42)
+        assert rect.centerx == 60
+        assert rect.width % 2 == 1
+
+
+def test_nuclear_live_beacon_uses_baked_tower_pixel_x():
+    site = PlantSite("nuclear", 0, 0, 270.6, 100, 0.0)
+    layer = pygame.Surface((400, 200), pygame.SRCALPHA)
+    _draw_plant_live(layer, site, 0.0, 0.0, True)
+    baked_tower_x = int(site.sx + 2)  # Pygame truncates the baked sprite blit.
+    assert layer.get_at((baked_tower_x, 84))[:3] == (236, 70, 58)
+
+
+def test_solar_lot_has_four_preserved_corners():
+    points = solar_lot_polygon(120, 90)
+    assert len(points) == 4
+    sprite, offset = _plant_static_sprite("solar", random.Random(7))
+    for x, y in points:
+        local = (x - 120 - offset[0], y - 90 - offset[1])
+        area = pygame.Rect(local[0] - 1, local[1] - 1, 3, 3).clip(sprite.get_rect())
+        assert area.width and area.height
+        assert sprite.subsurface(area).get_bounding_rect().width > 0
+
+
+def test_gas_plant_has_no_yellow_pavement_artifact():
+    sprite, _offset = _plant_static_sprite("gas", random.Random(7))
+    artifact = (206, 170, 74)
+    assert all(sprite.get_at((x, y))[:3] != artifact
+               for y in range(sprite.get_height())
+               for x in range(sprite.get_width()))
 
 
 def test_solar_campus_uses_separate_panel_blocks_and_service_lanes():
