@@ -14,6 +14,8 @@ captures track what the real game draws.
 Determinism note: the menu frames (01-05) and the calm game frame (06) are
 byte-stable run to run; the frames with live weather particles or pulsing
 warnings (07-10) carry animation noise, so compare those by eye, not by hash.
+The harness fixes Python's hash seed before importing the city renderer so its
+hashed layout and animation seeds are stable across fresh processes.
 """
 import os
 import random
@@ -22,6 +24,9 @@ from pathlib import Path
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+if os.environ.get("PYTHONHASHSEED") != "0":
+    os.environ["PYTHONHASHSEED"] = "0"
+    os.execv(sys.executable, [sys.executable, *sys.argv])
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "energy_grid_game"))
@@ -287,7 +292,7 @@ def capture(out_dir):
 
     # Pan a fresh 4x view so directional tabs can be reviewed together.
     st5 = fresh_game(14.0, 4)
-    w["city"].pan_by(800, 0, w["city_rect"])
+    w["city"].pan_by(800, 100, w["city_rect"])
     markers = w["city"].plant_markers(w["city_rect"])
     assert sum(not marker["visible"] for marker in markers.values()) >= 3
     settle(st5, 1)
