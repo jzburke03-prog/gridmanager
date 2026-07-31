@@ -19,24 +19,26 @@ SUPPLY_COLOR = (110, 220, 160)
 DEMAND_COLOR = (255, 170, 90)
 
 PANEL_TOP = 14
-PANEL_GAP = 24
+HUD_W = 900
+LEFT_W = 300
+CENTER_W = 400
+RIGHT_W = 200
+PANEL_H = 150
 PANEL_BG = (10, 14, 22, 205)
 PANEL_EDGE = (156, 174, 196, 92)
 
 
 def hud_panel_rects(width, height):
-    """The three independent HUD islands, sized for the supported viewports."""
-    left_w, center_w, right_w = 300, 400, 200
-    group_w = left_w + center_w + right_w + PANEL_GAP * 2
-    group_left = (width - group_w) // 2
-    left = pygame.Rect(group_left, PANEL_TOP, left_w, 150)
-    center = pygame.Rect(left.right + PANEL_GAP, PANEL_TOP, center_w, 150)
-    right = pygame.Rect(center.right + PANEL_GAP, PANEL_TOP, right_w, 150)
-    return {"left": left, "center": center, "right": right}
+    """One centered HUD panel, divided into three content zones."""
+    outer = pygame.Rect((width - HUD_W) // 2, PANEL_TOP, HUD_W, PANEL_H)
+    left = pygame.Rect(outer.left, outer.top, LEFT_W, PANEL_H)
+    center = pygame.Rect(left.right, outer.top, CENTER_W, PANEL_H)
+    right = pygame.Rect(center.right, outer.top, RIGHT_W, PANEL_H)
+    return {"outer": outer, "left": left, "center": center, "right": right}
 
 
-def hud_hit_test(panels, pos):
-    return any(rect.collidepoint(pos) for rect in panels.values())
+def hud_hit_test(layout, pos):
+    return layout["outer"].collidepoint(pos)
 
 # Concise, honest cause-of-death text for each failure the sim can actually
 # produce, keyed by GameState.game_over_reason.
@@ -117,9 +119,13 @@ class HUD:
         self._t += 1 / 60.0
         w, h = surface.get_size()
         panels = panels if isinstance(panels, dict) else hud_panel_rects(w, h)
+        outer = panels["outer"]
         left, center, right = (panels[name] for name in ("left", "center", "right"))
-        for rect in (left, center, right):
-            surface.blit(self._glass_panel(rect.size), rect)
+        surface.blit(self._glass_panel(outer.size), outer)
+        divider = pygame.Surface((1, outer.height), pygame.SRCALPHA)
+        divider.fill(PANEL_EDGE)
+        for x in (left.right, center.right):
+            surface.blit(divider, (x, outer.top))
 
         clock_txt = self.font_big.render(state.clock_string(), True, TEXT)
         clock_pos = (left.left + 10, left.top + 9)

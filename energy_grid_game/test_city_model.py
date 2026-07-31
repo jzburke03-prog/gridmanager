@@ -56,51 +56,33 @@ def test_region_world_size_covers_minimum_zoom_with_overscan():
         assert world.contains(visible)
 
 
-def test_gameplay_world_fills_screen_behind_three_separate_hud_islands():
-    for width, height in ((1000, 680), (1400, 900), (1800, 700)):
-        city_rect, chart_rect, readout_rect, _hud_h = compute_layout(width, height)
-        assert city_rect == pygame.Rect(0, 0, width, height)
-        assert city_rect.contains(chart_rect) and city_rect.contains(readout_rect)
-
-        panels = hud_panel_rects(width, height)
-        left, center, right = (panels[name] for name in ("left", "center", "right"))
-        assert city_rect.contains(left) and city_rect.contains(center)
-        assert city_rect.contains(right)
-        assert left.right < center.left < center.right < right.left
-        assert center.left - left.right == 24
-        assert right.left - center.right == 24
-        assert abs(left.left - (width - right.right)) <= 1
-        assert len({left.height, center.height, right.height}) == 1
-        assert left.height <= 150
-        assert right.right - left.left <= min(width - 52, 1000)
-        assert hud_hit_test(panels, left.center)
-        assert not hud_hit_test(
-            panels, ((left.right + center.left) // 2, left.centery))
+def test_hud_is_one_centered_panel_with_three_contiguous_zones():
+    layout = hud_panel_rects(1400, 900)
+    outer = layout["outer"]
+    left, center, right = (layout[k] for k in ("left", "center", "right"))
+    assert outer.centerx == 700
+    assert outer.height == 150
+    assert left.left == outer.left
+    assert left.right == center.left
+    assert center.right == right.left
+    assert right.right == outer.right
+    assert outer.contains(left) and outer.contains(center) and outer.contains(right)
+    assert hud_hit_test(layout, (left.right, outer.centery))
 
 
-def test_hud_draws_only_rounded_islands_not_a_full_width_scrim():
+def test_hud_draws_panel_across_the_old_gaps():
     width, height = 1000, 680
-    panels = hud_panel_rects(width, height)
-    font = pygame.font.Font(None, 16)
-    font_small = pygame.font.Font(None, 13)
-    font_big = pygame.font.Font(None, 24)
-    font_mono_big = pygame.font.Font(None, 40)
-    hud = HUD(font, font_small, font_big, font_mono_big)
+    layout = hud_panel_rects(width, height)
+    hud = HUD(pygame.font.Font(None, 16), pygame.font.Font(None, 13),
+              pygame.font.Font(None, 24), pygame.font.Font(None, 40))
     state = GameState(scenarios.make_standard())
-    state.fill_pct_display = 0.8
-    state.blackout = False
     state.flash_messages.clear()
-    state.celebrate_high_score = 0.0
     frame = pygame.Surface((width, height), depth=24)
-    world_color = (71, 109, 63)
-    frame.fill(world_color)
-
-    hud.draw(frame, state, panels)
-
-    left, center = panels["left"], panels["center"]
-    gap = ((left.right + center.left) // 2, left.top + 6)
-    assert frame.get_at(gap)[:3] == world_color
-    assert frame.get_at(left.center)[:3] != world_color
+    world = (71, 109, 63)
+    frame.fill(world)
+    hud.draw(frame, state, layout)
+    seam = (layout["left"].right, layout["outer"].top + 8)
+    assert frame.get_at(seam)[:3] != world
 
 
 def test_zoom_levels_reveal_additive_detail():

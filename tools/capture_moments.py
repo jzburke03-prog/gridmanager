@@ -116,7 +116,7 @@ def render_game(frame, st, w):
                            st.demand_min_mw, st.demand_peak_mw)
     w["city"].draw_homes_label(frame, w["readout_rect"], st.homes_without_power,
                                st.homes_total)
-    pin_obstacles = (w["chart_rect"], w["readout_rect"], *w["hud_panels"].values())
+    pin_obstacles = (w["chart_rect"], w["readout_rect"], w["hud_panels"]["outer"])
     strict_pins = w["strict_above_keys_for_zoom"](
         w["city"].camera.zoom if w["city"].camera is not None else 1)
     w["plant_pins"].draw(frame, st.active_sources, w["city"].plant_anchors(city_rect),

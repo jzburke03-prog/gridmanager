@@ -258,7 +258,7 @@ def main():
                     audio.play("ui_click")
                 else:
                     anchors = city.plant_anchors(city_rect)
-                    obstacles = (chart_rect, readout_rect, *hud_panels.values())
+                    obstacles = (chart_rect, readout_rect, hud_panels["outer"])
                     strict_pins = strict_above_keys_for_zoom(
                         city.camera.zoom if city.camera is not None else 1)
                     if plant_pins.handle_mouse_down(event.pos, state.active_sources,
@@ -273,7 +273,7 @@ def main():
                 city_dragging = False
             elif event.type == pygame.MOUSEMOTION:
                 anchors = city.plant_anchors(city_rect)
-                obstacles = (chart_rect, readout_rect, *hud_panels.values())
+                obstacles = (chart_rect, readout_rect, hud_panels["outer"])
                 strict_pins = strict_above_keys_for_zoom(
                     city.camera.zoom if city.camera is not None else 1)
                 if plant_pins.dragging_key is not None and event.buttons[0]:
@@ -323,7 +323,7 @@ def main():
         demand_chart.rect = chart_rect
         city.prepare(city_rect, state)
         anchors = city.plant_anchors(city_rect)
-        pin_obstacles = (chart_rect, readout_rect, *hud_panels.values())
+        pin_obstacles = (chart_rect, readout_rect, hud_panels["outer"])
         strict_pins = strict_above_keys_for_zoom(
             city.camera.zoom if city.camera is not None else 1)
         pin_layout = plant_pins.layout(state.active_sources, anchors,
