@@ -30,6 +30,18 @@ WATER_LERP_SPEED = 1.2            # per-second smoothing factor
 DEMAND_MIN_MW = 430.0
 DEMAND_PEAK_MW = 1000.0
 FILL_TRACK_SPEED = 2.0              # per-second smoothing toward the LIVE supply/demand ratio
+
+# --- transmission congestion (light 1.2-preview mechanic) -------------------
+# A plant's corridor carries LINE_HEADROOM of its nameplate before it overloads.
+# GUARDRAIL: LINE_HEADROOM * firm_capacity(1350 MW) must stay >= peak (1160 MW),
+# or peak demand becomes unmeetable without loss. 0.90 * 1350 = 1215 >= 1160.
+LINE_HEADROOM = 0.90
+CONGESTION_LOSS_FRACTION = 0.60      # fraction of overloaded MW dissipated as heat
+CONGESTION_SCORE_BLEED_PER_MW = 0.05 # score/sec bled per MW of total overload
+# Congestion applies only to plants the player throttles. Solar and wind are
+# weather-driven (opened wide, output is whatever's available), so a full-output
+# sunny/windy day must not read as the player's congestion.
+CONGESTION_EXCLUDED_KEYS = ("solar", "wind")
 MAX_FILL_PCT = 2.3                  # headroom above 100% so overflow can keep visibly escalating
 BLACKOUT_THRESHOLD = 0.40          # default; per-run value comes from difficulty
 STARTUP_GRACE = 3.0                 # seconds before a fresh game can blackout/meltdown —
@@ -253,6 +265,9 @@ class GameState:
 
         self.total_cost = 0.0
         self.cost_per_hour = 0.0     # current $/hr burn rate, for display
+        self.congestion_overload_mw = 0.0
+        self.congestion_loss_mw = 0.0
+        self.line_overload_frac = {}   # source key -> 0..1 overload for the UI
         self.grid_price = 0.0        # system marginal price ($/MWh) — the
                                       # cost of the most expensive source
                                       # currently dispatched, same logic real
@@ -410,7 +425,7 @@ class GameState:
 
     @property
     def homes_powered(self) -> float:
-        return min(self.total_actual_mw, self.demand_mw) * HOUSEHOLDS_PER_MW
+        return min(self.effective_supply_mw, self.demand_mw) * HOUSEHOLDS_PER_MW
 
     @property
     def homes_without_power(self) -> float:
@@ -426,6 +441,39 @@ class GameState:
     @property
     def total_actual_mw(self) -> float:
         return sum(s.current_output_mw for s in self.sources)
+
+    def line_capacity_mw(self, source) -> float:
+        return source.max_output_mw * LINE_HEADROOM
+
+    @property
+    def effective_supply_mw(self) -> float:
+        """Supply that actually reaches the city — nameplate output minus what
+        overloaded corridors dissipate."""
+        return max(0.0, self.total_actual_mw - self.congestion_loss_mw)
+
+    def _update_congestion(self, dt: float):
+        """Per-corridor overload -> total loss, per-source fraction, and $ cost.
+        Called from update() AFTER pricing so grid_price is fresh."""
+        overload_total = 0.0
+        frac = {}
+        for s in self.sources:
+            if s.key in CONGESTION_EXCLUDED_KEYS:
+                frac[s.key] = 0.0
+                continue
+            cap = self.line_capacity_mw(s)
+            over = max(0.0, s.current_output_mw - cap)
+            overload_total += over
+            headroom_span = max(1.0, s.max_output_mw * (1.0 - LINE_HEADROOM))
+            frac[s.key] = min(1.0, over / headroom_span)
+        self.congestion_overload_mw = overload_total
+        self.congestion_loss_mw = CONGESTION_LOSS_FRACTION * overload_total
+        self.line_overload_frac = frac
+        # you burn fuel for MW the wire throws away: price the loss at the margin
+        if self.congestion_loss_mw > 0.0 and dt > 0.0:
+            sim_hours = dt / self.seconds_per_sim_hour()
+            surcharge_rate = self.congestion_loss_mw * self.grid_price
+            self.cost_per_hour += surcharge_rate
+            self.total_cost += surcharge_rate * sim_hours
 
     def seconds_per_sim_hour(self) -> float:
         return GAME_DAY_REAL_SECONDS / 24.0
@@ -507,6 +555,7 @@ class GameState:
                 self._trigger_game_over("NUCLEAR MELTDOWN")
 
         self._update_pricing(dt)
+        self._update_congestion(dt)
 
         # fill_pct directly tracks the LIVE supply/demand ratio (smoothed only
         # enough to avoid jitter) rather than integrating surplus/deficit over
@@ -516,7 +565,7 @@ class GameState:
         # The 1.0 vessel is gone but this remains the hydraulic model the city
         # view renders and the 1.2 transmission model will build on.
         self.fill_pct_prev = self.fill_pct
-        self.fill_pct = track_fill(self.fill_pct, self.total_actual_mw, self.demand_mw,
+        self.fill_pct = track_fill(self.fill_pct, self.effective_supply_mw, self.demand_mw,
                                     dt, FILL_TRACK_SPEED, MAX_FILL_PCT)
         self.fill_pct_display += (self.fill_pct - self.fill_pct_display) * min(1.0, WATER_LERP_SPEED * dt)
 
@@ -555,6 +604,11 @@ class GameState:
         else:
             self.time_over += sim_hours
             self.points["over"] += delta
+
+        if self.congestion_overload_mw > 0.0:
+            bleed = CONGESTION_SCORE_BLEED_PER_MW * self.congestion_overload_mw * dt
+            self.score -= bleed
+            self.points["source"] -= bleed   # folded into the source-penalty bucket
 
         if self.score > self.high_score:
             if not self.new_high_score and self.high_score > 0:

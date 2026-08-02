@@ -36,9 +36,9 @@ RED = ((82, 10, 20), (145, 24, 38), (205, 55, 65))
 # distinct from the blackout warning) but is built the same way.
 AMBER = ((92, 40, 6), (162, 82, 16), (232, 158, 62))
 
-_THICKNESS_MIN = 70
-_THICKNESS_STEP = 30
-_THICKNESS_MAX = 160
+_THICKNESS_MIN = 28
+_THICKNESS_STEP = 14
+_THICKNESS_MAX = 70
 
 _INTENSITY_STEP = 8   # ~3% opacity granularity on the pulse
 _CACHE_LIMIT = 24     # comfortably covers one pulse cycle's worth of buckets

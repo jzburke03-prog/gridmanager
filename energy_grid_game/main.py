@@ -118,7 +118,7 @@ def main():
                 return None
             return TutorialManager(font, font_small, font, steps=steps,
                                    conditions=instructional_data.CONDITIONS,
-                                   skip_label="SKIP DAY")
+                                   skip_label="SKIP DIALOGUE")
         return TutorialManager(font, font_small, font)
 
     def start_game(cfg, fresh_tutorial=True):

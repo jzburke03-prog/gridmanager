@@ -141,8 +141,11 @@ def capture(out_dir):
     from ui.day_panel import DayPhase
     import game_state
 
+    saved = []
+
     def save(name):
         pygame.image.save(frame, str(out_dir / f"{name}.png"))
+        saved.append(name)
 
     def settle(st, frames=24):
         for _ in range(frames):
@@ -240,6 +243,10 @@ def capture(out_dir):
 
     w["city"].camera.set_zoom(1, w["city_rect"].center,
                               w["city_rect"], w["city"]._world_rect)
+    st4.sim_hour = 18.5
+    settle(st4)
+    save("14_zoom_1x_evening")
+
     for hour, name in ((5.5, "15_region_dawn"), (22.0, "16_region_night")):
         st4.sim_hour = hour
         settle(st4)
@@ -306,7 +313,7 @@ def capture(out_dir):
         settle(rush, 90)
         save(name)
 
-    print(f"captured 28 moments to {out_dir}")
+    print(f"captured {len(saved)} moments to {out_dir}")
 
 
 def main():

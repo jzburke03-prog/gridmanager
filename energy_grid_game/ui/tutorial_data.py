@@ -44,8 +44,8 @@ STEPS = [
         "portrait": portraits.EXPLAINING,
         "speaker": SPEAKER,
         "lines": [
-            "0400 hours. Whole city's asleep. The grid never gets to be.",
-            "Name's Gattie. Thirty years on this desk. Couple minutes, it's yours.",
+            "It's four in the morning. The whole city's asleep — but the grid never gets to be.",
+            "Name's Gattie. Thirty years at this desk. Give me a couple of minutes and it's yours.",
         ],
     },
     {
@@ -54,9 +54,9 @@ STEPS = [
         "speaker": SPEAKER,
         "highlight": "supply_demand",
         "lines": [
-            "SUPPLY is what we're making. DEMAND is what the city's pulling.",
-            "Those two have to match. Every second.",
-            "You can't store this stuff. You make it, the city burns it, right now.",
+            "SUPPLY is what we're making. DEMAND is what the city's pulling from us.",
+            "Those two have to match, every single second.",
+            "You can't store this stuff. The moment you make it, the city burns it.",
         ],
     },
     {
@@ -65,9 +65,9 @@ STEPS = [
         "speaker": SPEAKER,
         "highlight": "city",
         "lines": [
-            "That's the city, straight down. Every lit block is a block we're carrying.",
-            "Dark at this hour is normal — nobody's up yet. Watch it wake as the day comes.",
-            "Come up short and blocks drop, outskirts first. Push too much and it burns.",
+            "That's the city, straight down below us. Every lit block is one we're carrying.",
+            "Dark at this hour is normal — nobody's up yet. Watch it wake as the day comes on.",
+            "Come up short and blocks go dark, the outskirts first. Push too much and things burn.",
         ],
     },
     {
@@ -79,16 +79,16 @@ STEPS = [
         "lines": [
             "Right now we're short. Demand's climbing and we're behind it.",
             "Grab a plant's handle and pull it up.",
-            "Reach for gas first. It ramps in seconds. Nuclear and coal take their time.",
+            "Reach for gas first — it ramps in seconds. Nuclear and coal take their time.",
         ],
         "action_hint": "Pull a plant's handle up",
         "success": {
             "portrait": portraits.HAPPY,
-            "text": "There it is. Watch the supply climb to meet the load.",
+            "text": "There it is. Watch the supply climb up to meet the load.",
         },
         "correction": {
             "portrait": portraits.TALKING,
-            "text": "Not there. The handle floats over the gas plant itself.",
+            "text": "Not there. The handle sits right over the gas plant itself.",
         },
     },
     {
@@ -98,17 +98,17 @@ STEPS = [
         "highlight": "supply_demand",
         "wait_for": "balanced",
         "lines": [
-            "Now feather it in. Get supply inside ten percent of demand.",
-            "Overshoot, ease it back. When it settles, the number goes green: BALANCED.",
+            "Now feather it in. Get supply within ten percent of demand.",
+            "If you overshoot, ease it back. When it settles, the number turns green: BALANCED.",
         ],
         "action_hint": "Land supply within 10% of demand",
         "success": {
             "portrait": portraits.HAPPY,
-            "text": "Balanced. Frequency's steady, every home's lit. That's the job.",
+            "text": "Balanced. Frequency's steady, every home's lit up. That's the job.",
         },
         "correction": {
             "portrait": portraits.TALKING,
-            "text": "Work the handles slow. Watch the big number, not the plants.",
+            "text": "Work the handles slowly. Watch the big number, not the plants.",
         },
     },
     {
@@ -117,7 +117,7 @@ STEPS = [
         "speaker": SPEAKER,
         "highlight": "speed_control",
         "lines": [
-            "Clock's down here. Run it fast when it's quiet, slow when it's hairy.",
+            "The clock's down here. Run it fast when it's quiet, slow when it gets hairy.",
             "SPACE stops the clock. R starts the day over.",
         ],
     },
@@ -126,8 +126,8 @@ STEPS = [
         "portrait": portraits.NEUTRAL,
         "speaker": SPEAKER,
         "lines": [
-            "Load climbs all morning as the city wakes.",
-            "It peaks in the evening. Everyone home, every AC running.",
+            "Load climbs all morning as the city wakes up.",
+            "It peaks in the evening — everyone home, every AC running.",
             "Stay ahead of it. She's your grid now. Don't let the lights go out.",
         ],
     },

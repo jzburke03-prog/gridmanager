@@ -8,6 +8,7 @@ import math
 import pygame
 from demand_curve import demand_curve_samples
 from game_state import DAY_START_HOUR
+from ui.time_of_day import SkyGradient, get_time_of_day_colors
 
 BG = (16, 20, 32)
 BORDER = (55, 64, 86)
@@ -30,6 +31,12 @@ class DemandChart:
         self.font = font
         self.demand_hours, self.demand_levels = demand_curve_samples(288)
         self._t = 0.0
+        # Background tracks the time of day (dark blue overnight, warm at
+        # dawn/dusk, brighter at midday), cached so it only rebuilds when the
+        # colour actually shifts.
+        self._sky = SkyGradient()
+        self._bg_cache = None
+        self._bg_key = None
 
     def _plot_max_mw(self, peak_mw: float) -> float:
         return peak_mw * 1.15  # headroom so the peak doesn't touch the top edge
@@ -50,15 +57,34 @@ class DemandChart:
         usable = self.rect.height - top_pad - bottom_pad
         return self.rect.bottom - bottom_pad - (mw / max_mw) * usable
 
+    def _draw_dynamic_bg(self, surface, hour):
+        """Time-of-day gradient background, darkened so the demand line and the
+        stacked mix stay legible. Rounded corners via an alpha mask; cached by
+        (size, colours) so it rebuilds only when the sky colour shifts."""
+        top, bottom = get_time_of_day_colors(hour)
+        d = 0.42
+        top = tuple(int(c * d) for c in top)
+        bottom = tuple(int(c * d) for c in bottom)
+        w, h = self.rect.size
+        key = (w, h, top, bottom)
+        if key != self._bg_key:
+            grad = self._sky.surface(w, h, top, bottom).convert_alpha().copy()
+            mask = pygame.Surface((w, h), pygame.SRCALPHA)
+            pygame.draw.rect(mask, (255, 255, 255, 255), mask.get_rect(), border_radius=6)
+            grad.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+            self._bg_cache = grad
+            self._bg_key = key
+        surface.blit(self._bg_cache, self.rect.topleft)
+        pygame.draw.rect(surface, BORDER, self.rect, width=1, border_radius=6)
+
     def draw(self, surface: pygame.Surface, current_hour: float, sources, history,
              demand_mw_now, min_mw, peak_mw):
         self._t += 1 / 60.0
         top_pad, bottom_pad = 16, 18
 
-        pygame.draw.rect(surface, BG, self.rect, border_radius=6)
-        pygame.draw.rect(surface, BORDER, self.rect, width=1, border_radius=6)
+        self._draw_dynamic_bg(surface, current_hour)
 
-        title = self.font.render("DEMAND CURVE", True, (150, 158, 176))
+        title = self.font.render("DEMAND CURVE", True, (210, 218, 234))
         surface.blit(title, (self.rect.left + 8, self.rect.top + 4))
 
         max_mw = self._plot_max_mw(peak_mw)

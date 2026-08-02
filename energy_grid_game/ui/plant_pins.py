@@ -285,17 +285,24 @@ class PlantPins:
                        (rect.centerx, rect.top - 6)]
         pygame.draw.polygon(surface, source.color, chevron)
 
+    def _shadow_label(self, surface, text, font, color, pos):
+        """Text with a 1px dark drop-shadow, so a label stays legible floating
+        over the bright map with no card behind it."""
+        surface.blit(font.render(text, True, (6, 8, 14)), (pos[0] + 1, pos[1] + 1))
+        surface.blit(font.render(text, True, color), pos)
+
     def _draw_pin(self, surface, source, item, demand_level, show_price):
         rect = item["rect"]
-        panel = pygame.Surface(rect.size, pygame.SRCALPHA)
-        panel.fill(BG)
-        pygame.draw.rect(panel, source.color, panel.get_rect(), 2, border_radius=6)
-        surface.blit(panel, rect)
-
-        name = self.font_bold.render(source.name.upper(), True, TEXT)
-        surface.blit(name, (rect.left + 8, rect.top + 6))
-        pct = self.font_small.render(f"{round(source.requested_pct * 100)}%", True, PCT_ON)
-        surface.blit(pct, (rect.right - pct.get_width() - 8, rect.top + 7))
+        # No card background: the dial and its labels float against the plant
+        # they control, so the control reads as part of the generating
+        # technology rather than a boxed HUD widget. The name takes the fuel's
+        # colour; a drop-shadow carries legibility that the panel used to.
+        self._shadow_label(surface, source.name.upper(), self.font_bold,
+                           source.color, (rect.left + 8, rect.top + 6))
+        pct = f"{round(source.requested_pct * 100)}%"
+        pw = self.font_small.size(pct)[0]
+        self._shadow_label(surface, pct, self.font_small, PCT_ON,
+                           (rect.right - pw - 8, rect.top + 7))
 
         cx, cy = item["dial_center"]
         self._draw_dial(surface, source, cx, cy)
@@ -304,15 +311,13 @@ class PlantPins:
         remaining = source.time_to_target()
         if remaining > 0.05:
             status = f"{status} {remaining:.0f}s"
-        status_text = self.font_small.render(
-            status, True, STATUS_COLORS.get(source.status, DIM))
-        surface.blit(status_text, (rect.left + 70, rect.top + 34))
-        mw = self.font_small.render(
-            f"{source.current_output_mw:.0f}/{source.max_output_mw:.0f} MW", True, TEXT)
-        surface.blit(mw, (rect.left + 70, rect.top + 52))
+        self._shadow_label(surface, status, self.font_small,
+                           STATUS_COLORS.get(source.status, DIM), (rect.left + 70, rect.top + 34))
+        self._shadow_label(surface, f"{source.current_output_mw:.0f}/{source.max_output_mw:.0f} MW",
+                           self.font_small, TEXT, (rect.left + 70, rect.top + 52))
         if show_price:
-            price = self.font_small.render(f"${source.price_at(demand_level):.0f}/MWh", True, DIM)
-            surface.blit(price, (rect.left + 70, rect.top + 70))
+            self._shadow_label(surface, f"${source.price_at(demand_level):.0f}/MWh",
+                               self.font_small, DIM, (rect.left + 70, rect.top + 70))
 
     @staticmethod
     def _draw_dial(surface, source, cx, cy):

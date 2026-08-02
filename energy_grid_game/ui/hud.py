@@ -105,15 +105,19 @@ class HUD:
         except Exception:
             self._degree_ok = False
 
-    def _glass_panel(self, size):
-        panel = self._panel_cache.get(size)
-        if panel is None:
-            panel = pygame.Surface(size, pygame.SRCALPHA)
-            pygame.draw.rect(panel, PANEL_BG, panel.get_rect(), border_radius=9)
-            pygame.draw.rect(panel, PANEL_EDGE, panel.get_rect(), width=1,
-                             border_radius=9)
-            self._panel_cache[size] = panel
-        return panel
+    def _top_scrim(self, width):
+        """A soft top vignette (dark at the top edge, fading to nothing) that
+        replaces the boxed HUD panel: the readouts float on the sky and read as
+        goals rather than a windowed widget, while staying legible over the map."""
+        scrim = self._panel_cache.get(("scrim", width))
+        if scrim is None:
+            h = 172
+            scrim = pygame.Surface((width, h), pygame.SRCALPHA)
+            for yy in range(h):
+                a = int(165 * (1.0 - yy / h) ** 1.5)
+                pygame.draw.line(scrim, (8, 11, 18, a), (0, yy), (width, yy))
+            self._panel_cache[("scrim", width)] = scrim
+        return scrim
 
     def draw(self, surface, state, panels=None):
         self._t += 1 / 60.0
@@ -121,11 +125,9 @@ class HUD:
         panels = panels if isinstance(panels, dict) else hud_panel_rects(w, h)
         outer = panels["outer"]
         left, center, right = (panels[name] for name in ("left", "center", "right"))
-        surface.blit(self._glass_panel(outer.size), outer)
-        divider = pygame.Surface((1, outer.height), pygame.SRCALPHA)
-        divider.fill(PANEL_EDGE)
-        for x in (left.right, center.right):
-            surface.blit(divider, (x, outer.top))
+        # No boxed panel: a soft top vignette carries legibility while the
+        # readouts float on the sky (see _top_scrim).
+        surface.blit(self._top_scrim(w), (0, 0))
 
         clock_txt = self.font_big.render(state.clock_string(), True, TEXT)
         clock_pos = (left.left + 10, left.top + 9)
@@ -198,7 +200,7 @@ class HUD:
         # "am I meeting demand right now", not the tank's slow-accumulating
         # reservoir level (that's a different question, shown as a small badge
         # below) ---
-        supply_mw = state.total_actual_mw
+        supply_mw = state.effective_supply_mw
         demand_mw = state.demand_mw
         raw_ratio = supply_mw / demand_mw if demand_mw > 0 else 1.0
         self._ratio_display += (raw_ratio - self._ratio_display) * min(1.0, 6.0 * (1 / 60.0))
@@ -241,7 +243,16 @@ class HUD:
         surface.blit(demand_lbl, (demand_lbl_x, y))
         surface.blit(demand_val, (demand_x, y + supply_lbl.get_height() + 1))
 
-        y += supply_lbl.get_height() + supply_val.get_height() + 2
+        # Goal framing: SUPPLY is where you are NOW, DEMAND is the TARGET you must
+        # match — spelling it out makes the top readout read as the objective.
+        tag_y = y + supply_lbl.get_height() + supply_val.get_height() + 1
+        now_tag = self.font_small.render("NOW", True, SUPPLY_COLOR)
+        surface.blit(now_tag, (bx + supply_val.get_width() // 2 - now_tag.get_width() // 2, tag_y))
+        tgt_tag = self.font_small.render("TARGET", True, DEMAND_COLOR)
+        surface.blit(tgt_tag, (demand_x + demand_val.get_width() // 2 - tgt_tag.get_width() // 2, tag_y))
+
+        y += (supply_lbl.get_height() + supply_val.get_height()
+              + now_tag.get_height() + 4)
 
         # live grid price: the marginal cost of the priciest source actually
         # dispatched right now — cheap when only baseload runs, expensive the
@@ -253,6 +264,12 @@ class HUD:
                 True, _price_color(state.grid_price))
             surface.blit(price_txt, (center_x - price_txt.get_width() // 2, y))
             y += price_txt.get_height() + 10
+
+            if state.congestion_overload_mw > 1.0:
+                warn = self.font_small.render(
+                    f"CONGESTION  -{state.congestion_loss_mw:,.0f} MW", True, (255, 140, 90))
+                surface.blit(warn, (center_x - warn.get_width() // 2, y))
+                y += warn.get_height() + 4
 
         # The reservoir badge used to sit here. It was redundant with the big
         # ratio readout above (both answer "am I meeting demand"), and the tank
@@ -421,7 +438,7 @@ class HUD:
         brighter interior) that only re-renders when the window size or the
         quantized thickness changes. Position, thickness and pulse timing are
         unchanged."""
-        thickness = int(70 + 90 * severity)
+        thickness = int(28 + 42 * severity)
         pulse_speed = 1.0 + 1.0 * severity  # capped well under 1 Hz
         pulse = int((30 + 60 * severity) * abs(math.sin(self._t * pulse_speed)))
         base_alpha = int(50 + 130 * severity)

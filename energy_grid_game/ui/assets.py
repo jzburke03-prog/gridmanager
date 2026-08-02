@@ -14,6 +14,7 @@ per-shape caches so scaling happens once. Two scaling policies:
 Everything is loaded lazily inside the functions -- never at import time, since
 convert_alpha() requires a display surface to exist first.
 """
+import json
 from pathlib import Path
 
 import pygame
@@ -27,6 +28,8 @@ _raw_cache = {}      # relpath -> Surface (convert_alpha, uncropped)
 _scaled_cache = {}   # (relpath, w, h, smooth) -> Surface
 _slice_cache = {}    # (relpath, w, h) -> Surface
 _tech_cache = {}     # (tech, height, dim) -> [Surface x4]
+_iso_manifest_cache = None
+_iso_sprite_cache = {}
 
 
 def load(relpath: str) -> pygame.Surface:
@@ -145,3 +148,77 @@ def tech_frames(tech: str, height: int, dim: bool = False) -> list:
         out.append(surf)
     _tech_cache[key] = out
     return out
+
+
+def iso_manifest() -> dict:
+    """Curated isometric art manifest, loaded lazily from assets/iso."""
+    global _iso_manifest_cache
+    if _iso_manifest_cache is not None:
+        return _iso_manifest_cache
+    path = ASSET_DIR / "iso" / "manifest.json"
+    if not path.is_file():
+        raise FileNotFoundError(f"iso manifest missing: {path}")
+    _iso_manifest_cache = json.loads(path.read_text(encoding="utf-8"))
+    return _iso_manifest_cache
+
+
+def iso_sprite(relpath: str) -> pygame.Surface:
+    """Load one curated isometric sprite by manifest-relative path."""
+    hit = _iso_sprite_cache.get(relpath)
+    if hit is not None:
+        return hit
+    surface = load(f"iso/{relpath}")
+    bounds = surface.get_bounding_rect()
+    if bounds.width <= 0 or bounds.height <= 0:
+        raise ValueError(f"iso sprite has empty alpha bounds: {relpath}")
+    _iso_sprite_cache[relpath] = surface
+    return surface
+
+
+def iso_building_entries(tier: str) -> list:
+    entries = iso_manifest()["buildings"].get(tier, ())
+    if not entries:
+        raise KeyError(f"missing iso building tier: {tier}")
+    return entries
+
+
+def iso_city_center_entries() -> list:
+    entries = iso_manifest().get("city_center", ())
+    if not entries:
+        raise KeyError("missing iso city_center entries")
+    return entries
+
+
+def iso_plant_entry(key: str) -> dict:
+    try:
+        return iso_manifest()["plants"][key]
+    except KeyError as exc:
+        raise KeyError(f"missing iso plant entry: {key}") from exc
+
+
+def _iso_family_entries(family: str, role: str) -> list:
+    items = iso_manifest().get(family, {}).get(role, ())
+    if isinstance(items, dict):
+        items = [items]
+    if not items:
+        raise KeyError(f"missing iso {family} role: {role}")
+    return items
+
+
+def iso_road_entries(role: str) -> list:
+    return _iso_family_entries("roads", role)
+
+
+def iso_municipal_entries(role: str) -> list:
+    return _iso_family_entries("municipal", role)
+
+
+def iso_detail_entries(role: str) -> list:
+    return _iso_family_entries("details", role)
+
+
+def iso_block_palette(role: str) -> list:
+    palette = iso_manifest().get("block_palettes", {}).get(role, ())
+    if not palette:
+        raise KeyError(f"missing iso block palette: {role}")
+    return list(palette)

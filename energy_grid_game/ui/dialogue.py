@@ -222,7 +222,8 @@ class DialogueBox:
 
         if skip_label:
             self.skip_rect = pygame.Rect(0, 0, 118, 22)
-            self.skip_rect.topright = (self.rect.right, self.rect.top - 26)
+            top = max(2, self.rect.top - 26)  # never off the top of the screen
+            self.skip_rect.topright = (self.rect.right, top)
             pygame.draw.rect(surface, (18, 22, 34), self.skip_rect, border_radius=4)
             pygame.draw.rect(surface, (120, 132, 160), self.skip_rect, width=1, border_radius=4)
             txt = self.font_small.render(skip_label, True, (218, 226, 240))
@@ -237,7 +238,8 @@ class DialogueBox:
         if learn_label:
             txt = self.font_small.render(learn_label, True, (226, 214, 150))
             self.learn_rect = pygame.Rect(0, 0, txt.get_width() + 20, 22)
-            self.learn_rect.topleft = (self.rect.left, self.rect.top - 26)
+            top = max(2, self.rect.top - 26)  # never off the top of the screen
+            self.learn_rect.topleft = (self.rect.left, top)
             pygame.draw.rect(surface, (26, 24, 16), self.learn_rect, border_radius=4)
             pygame.draw.rect(surface, (180, 160, 90), self.learn_rect, width=1, border_radius=4)
             surface.blit(txt, (self.learn_rect.centerx - txt.get_width() // 2,

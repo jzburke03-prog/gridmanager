@@ -10,8 +10,10 @@ this approximates:
     $/MWh ≈ heat_rate (Btu/kWh) × fuel_price ($/MMBtu) / 1000 + variable O&M
 
 Reference figures used (approximate, typical 2023-2024 Southeast averages):
-  Nuclear: heat rate ~10,400 Btu/kWh, fuel ~$0.75/MMBtu, O&M-heavy (staffing/
-           security/NRC compliance dominate over fuel) -> ~$28/MWh
+  Nuclear: fuel ~$0.75/MMBtu at ~10,400 Btu/kWh gives ~$7/MWh fuel + ~$2.5/MWh
+           variable O&M -> ~$11/MWh MARGINAL/dispatch cost (what merit order
+           uses). Its ~$33/MWh all-in generating cost is a different figure —
+           it includes fixed O&M and capital, which dispatch order ignores.
   Coal:    heat rate ~10,200 Btu/kWh, fuel ~$2.20/MMBtu, aging Southeast
            fleet has higher O&M -> ~$38/MWh
   Gas CC:  heat rate ~7,000 Btu/kWh (efficient combined-cycle), fuel
@@ -23,7 +25,7 @@ Reference figures used (approximate, typical 2023-2024 Southeast averages):
   Hydro:   no fuel cost, O&M + water value -> low but nonzero marginal cost
 """
 
-NUCLEAR_PRICE_PER_MWH = 28.0
+NUCLEAR_PRICE_PER_MWH = 11.0
 COAL_PRICE_PER_MWH = 38.0
 SOLAR_PRICE_PER_MWH = 3.0
 WIND_PRICE_PER_MWH = 3.0
