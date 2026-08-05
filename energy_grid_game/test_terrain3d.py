@@ -32,21 +32,21 @@ def test_build_instances_buckets_by_material_and_skips_non_terrain_kinds():
     instances = build_instances(tiles)
     assert set(instances) == {"grass", "farm", "tree", "water", "mountain"}
     for material in MATERIALS:
-        assert instances[material].shape == (1, 3)
+        assert instances[material].shape == (1, 4)
         assert instances[material].dtype == np.float32
 
 
 def test_build_instances_offset_matches_col_row():
     tiles = {(3, 5): ("grass", None)}
     instances = build_instances(tiles)
-    expected = np.array([-5.0 * TILE_SPACING, 0.0, 3.0 * TILE_SPACING], dtype="f4")
+    expected = np.array([-5.0 * TILE_SPACING, 0.0, 3.0 * TILE_SPACING, 0.0], dtype="f4")
     assert np.array_equal(instances["grass"][0], expected)
 
 
 def test_build_instances_groups_multiple_tiles_of_the_same_material():
     tiles = {(0, 0): ("grass", None), (1, 1): ("grass", None), (2, 2): ("grass", None)}
     instances = build_instances(tiles)
-    assert instances["grass"].shape == (3, 3)
+    assert instances["grass"].shape == (3, 4)
 
 
 def test_build_instances_omits_materials_with_no_tiles():
@@ -68,7 +68,7 @@ def test_build_instances_matches_iso_xy_sign_convention():
     for col, row in [(1, 0), (0, 1), (2, 1)]:
         tiles = {(col, row): ("grass", None)}
         offset = build_instances(tiles)["grass"][0]
-        cam = CAM_ROT @ offset
+        cam = CAM_ROT @ offset[:3]
         sx = cam[0]
         screen_y = -cam[1]
         iso_x, iso_y = iso_xy(col, row)
@@ -97,7 +97,7 @@ def test_draw_produces_a_readable_framebuffer_with_visible_content():
     try:
         prog = create_program(ctx)
         meshes = load_meshes(ctx, prog)
-        upload_instances(ctx, meshes, {"grass": np.array([[0.0, 0.0, 0.0]], dtype="f4")})
+        upload_instances(ctx, meshes, {"grass": np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4")})
         fbo = create_framebuffer(ctx, (64, 64))
         draw(ctx, prog, meshes, fbo, _FakeCamera(center=(0.0, 0.0), zoom=1.0))
         rgba, size = read_rgba(fbo)

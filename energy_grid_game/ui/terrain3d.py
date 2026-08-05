@@ -39,28 +39,21 @@ MESH_DIR = Path(__file__).resolve().parents[1] / "assets" / "terrain3d"
 def build_instances(tiles):
     """Pure tile-dict -> per-material instance offsets. No GL calls.
 
-    `tiles` is shaped like IsoCity.tiles: {(col, row): (kind, extra)}. Tiles
-    whose kind isn't one of MATERIALS (roads, buildings, parks, etc. -- still
-    2D-sprite-rendered in Phase 1) are skipped. Each terrain tile becomes one
-    (-row * TILE_SPACING, 0, col * TILE_SPACING) world-space offset; y=0 for
-    all materials in Phase 1 (mountain height/elevation is a Phase 4 polish
-    item, not consumed here yet even though the tile payload carries it).
-    col and row are swapped (col feeds world Z, row feeds world -X) so that,
-    once projected through CAM_ROT below, the on-screen result matches
-    ui.iso_city.iso_xy's (col - row, col + row) diamond axes: screen_x ends
-    up proportional to (col - row) and screen_y proportional to (col + row).
-    A naive "negate row only" offset (col * S, 0, -row * S) gets screen_x
-    right but mirrors screen_y -- see
-    test_build_instances_matches_iso_xy_sign_convention below, which
-    verifies this by projecting through the real camera math instead of
-    just re-checking the formula."""
+    `tiles` is shaped like IsoCity.tiles: {(col, row): (kind, extra)}.
+    Returns {material: (N,4) float32 array of [x, y, z, yaw_degrees]} --
+    every material uses this 4-column format (Phase 2 generalization),
+    even terrain materials that never rotate (yaw always 0.0 for them).
+    col and row are swapped (col feeds world Z, row feeds world -X) so the
+    projected result matches ui.iso_city.iso_xy's (col - row, col + row)
+    diamond axes -- see test_build_instances_matches_iso_xy_sign_convention.
+    """
     buckets = {material: [] for material in MATERIALS}
     for (col, row), (kind, _extra) in tiles.items():
         if kind in buckets:
             buckets[kind].append(
-                (-float(row) * TILE_SPACING, 0.0, float(col) * TILE_SPACING))
+                (-float(row) * TILE_SPACING, 0.0, float(col) * TILE_SPACING, 0.0))
     return {
-        material: np.array(offsets, dtype="f4").reshape(-1, 3)
+        material: np.array(offsets, dtype="f4").reshape(-1, 4)
         for material, offsets in buckets.items()
         if offsets
     }
@@ -100,10 +93,19 @@ in vec3 in_pos;
 in vec3 in_normal;
 in vec2 in_uv;
 in vec3 in_offset;
+in float in_yaw;
 out vec2 v_uv;
 out vec3 v_normal;
 void main() {
-    vec3 world = in_pos + in_offset;
+    float rad = radians(in_yaw);
+    float c = cos(rad);
+    float s = sin(rad);
+    mat3 yaw_rot = mat3(c, 0.0, -s,
+                         0.0, 1.0, 0.0,
+                         s, 0.0, c);
+    vec3 local = yaw_rot * in_pos;
+    vec3 normal = yaw_rot * in_normal;
+    vec3 world = local + in_offset;
     vec3 cam = cam_rot * world;
     float sx = cam.x * px_per_unit * zoom;
     float sy = -cam.y * px_per_unit * zoom;
@@ -117,7 +119,7 @@ void main() {
     float ndc_y = screen_px.y / img_size.y * 2.0 - 1.0;
     gl_Position = vec4(ndc_x, ndc_y, -depth * 0.01, 1.0);
     v_uv = in_uv;
-    v_normal = in_normal;
+    v_normal = normal;
 }
 """
 
@@ -153,11 +155,11 @@ class GLMesh:
         verts = np.hstack([pos, nrm, uv]).astype("f4")
         self.vbo = ctx.buffer(verts.tobytes())
         self.ibo = ctx.buffer(idx.astype("i4").tobytes())
-        self.instance_vbo = ctx.buffer(reserve=12)  # 1 instance placeholder; resized on upload
+        self.instance_vbo = ctx.buffer(reserve=16)  # 1 instance (x,y,z,yaw) placeholder
         self.vao = ctx.vertex_array(
             prog,
             [(self.vbo, "3f 3f 2f", "in_pos", "in_normal", "in_uv"),
-             (self.instance_vbo, "3f/i", "in_offset")],
+             (self.instance_vbo, "3f 1f/i", "in_offset", "in_yaw")],
             self.ibo,
         )
         tex_h, tex_w = tex.shape[0], tex.shape[1]
@@ -167,7 +169,7 @@ class GLMesh:
 
     def set_instances(self, offsets):
         data = offsets.astype("f4").tobytes()
-        self.instance_vbo.orphan(max(len(data), 12))
+        self.instance_vbo.orphan(max(len(data), 16))
         if len(data):
             self.instance_vbo.write(data)
         self.instance_count = len(offsets)
@@ -188,7 +190,7 @@ def load_meshes(ctx, prog, mesh_dir=MESH_DIR):
 
 
 def upload_instances(ctx, meshes, instances):
-    empty = np.zeros((0, 3), dtype="f4")
+    empty = np.zeros((0, 4), dtype="f4")
     for material, mesh in meshes.items():
         mesh.set_instances(instances.get(material, empty))
 
