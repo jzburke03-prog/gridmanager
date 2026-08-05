@@ -155,6 +155,33 @@ def test_to_surface_returns_a_surface_of_the_requested_size():
     assert surf.get_size() == (8, 8)
 
 
+def test_instance_yaw_actually_rotates_the_rendered_mesh():
+    """The `straight` road mesh is longer along one axis than the other (a
+    road segment, not a symmetric tile) -- render it once at yaw=0 and once
+    at yaw=90 into separate framebuffers and confirm the rendered alpha
+    footprints differ, proving the shader's per-instance rotation actually
+    executes rather than being a no-op."""
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog)
+        camera = _FakeCamera(center=(0.0, 0.0), zoom=1.0)
+
+        upload_instances(ctx, meshes, {"straight": np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4")})
+        fbo_a = create_framebuffer(ctx, (128, 128))
+        draw(ctx, prog, meshes, fbo_a, camera)
+        rgba_a, _ = read_rgba(fbo_a)
+
+        upload_instances(ctx, meshes, {"straight": np.array([[0.0, 0.0, 0.0, 90.0]], dtype="f4")})
+        fbo_b = create_framebuffer(ctx, (128, 128))
+        draw(ctx, prog, meshes, fbo_b, camera)
+        rgba_b, _ = read_rgba(fbo_b)
+
+        assert rgba_a != rgba_b
+    finally:
+        ctx.release()
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
