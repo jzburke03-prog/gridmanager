@@ -209,6 +209,14 @@ def load_meshes(ctx, prog, mesh_dir=MESH_DIR):
         data = np.load(mesh_dir / f"{material}.npz")
         meshes[material] = GLMesh(ctx, prog, data["pos"], data["nrm"],
                                     data["uv"], data["idx"], data["tex"])
+    for shape in ROAD_MATERIALS:
+        data = np.load(mesh_dir / "roads" / f"{shape}.npz")
+        meshes[shape] = GLMesh(ctx, prog, data["pos"], data["nrm"],
+                                 data["uv"], data["idx"], data["tex"])
+    for archetype in BUILDING_MATERIALS:
+        data = np.load(mesh_dir / "buildings" / f"{archetype}.npz")
+        meshes[archetype] = GLMesh(ctx, prog, data["pos"], data["nrm"],
+                                     data["uv"], data["idx"], data["tex"])
     return meshes
 
 

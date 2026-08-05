@@ -120,12 +120,12 @@ class _FakeCamera:
         self.zoom = zoom
 
 
-def test_load_meshes_covers_all_materials():
+def test_load_meshes_covers_terrain_road_and_building_materials():
     ctx = create_context()
     try:
         prog = create_program(ctx)
         meshes = load_meshes(ctx, prog)
-        assert set(meshes) == set(MATERIALS)
+        assert set(meshes) == set(MATERIALS) | set(ROAD_MATERIALS) | set(BUILDING_MATERIALS)
     finally:
         ctx.release()
 
