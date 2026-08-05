@@ -6,14 +6,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
 
-from ui.terrain3d import (BUILDING_MATERIALS, CAM_ROT, MATERIALS,
+from ui.terrain3d import (BUILDING_MATERIALS, CAM_ROT, MATERIALS, MESH_DIR,
                            ROAD_MATERIALS, ROAD_ROLE_TO_SHAPE_YAW,
                            TILE_SPACING, build_instances)
-from ui.iso_city import iso_xy
+from ui.iso_city import IsoCity, iso_xy
+from ui.urban_blocks import UrbanRoad
 
 import os as _os
 _os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import pygame
+pygame.display.set_mode((1, 1))     # sprite baking (IsoCity._layout) needs a video surface
 
 from ui.gl_context import create_context
 from ui.terrain3d import (create_framebuffer, create_program, draw,
@@ -29,13 +31,34 @@ def test_build_instances_buckets_by_material_and_skips_unrecognized_kinds():
         (3, 0): ("water", None),
         (4, 0): ("mountain", 7),
         (5, 0): ("nonsense_kind", None),  # not a terrain/road/building kind, skip
-        (6, 0): ("road", "not_a_real_role"),  # unrecognized role, skip
     }
     instances = build_instances(tiles)
     assert set(instances) == {"grass", "farm", "tree", "water", "mountain"}
     for material in MATERIALS:
         assert instances[material].shape == (1, 4)
         assert instances[material].dtype == np.float32
+
+
+def test_build_instances_raises_on_unrecognized_road_role():
+    tiles = {(0, 0): ("road", UrbanRoad(col=0, row=0, role="not_a_real_role", avenue=False))}
+    try:
+        build_instances(tiles)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+
+
+def test_build_instances_raises_on_unrecognized_building_archetype():
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from ui.iso_city import _building_tile
+    tile = _building_tile(0, 0, "Downtown", "not_a_real_archetype")
+    tiles = {(0, 0): ("urban_block", tile)}
+    try:
+        build_instances(tiles)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
 
 
 def test_build_instances_offset_matches_col_row():
@@ -78,11 +101,22 @@ def test_build_instances_matches_iso_xy_sign_convention():
         assert np.sign(screen_y) == np.sign(iso_y), (col, row, screen_y, iso_y)
 
 
+def _road_tile(col, row, role):
+    # Build a real UrbanRoad the same way RoadNetwork.commit_project does,
+    # so this test breaks (loudly) if road tile payloads stop being
+    # UrbanRoad instances (see Finding 1: build_instances used to read the
+    # raw payload as if it were a bare role string, which meant every real
+    # road tile silently never matched ROAD_ROLE_TO_SHAPE_YAW).
+    return UrbanRoad(col=col, row=row, role=role, avenue=False)
+
+
 def test_build_instances_buckets_road_tiles_by_shape_with_correct_yaw():
     tiles = {
-        (0, 0): ("road", "straight_ne"),
-        (1, 0): ("road", "straight_nw"),
-        (2, 0): ("road", "cross"),
+        (0, 0): ("road", _road_tile(0, 0, "straight_ne")),
+        (1, 0): ("road", _road_tile(1, 0, "straight_nw")),
+        (2, 0): ("road", _road_tile(2, 0, "cross")),
+        (3, 0): ("road", _road_tile(3, 0, "corner_nw")),
+        (4, 0): ("road", _road_tile(4, 0, "tee_ne")),
     }
     instances = build_instances(tiles)
     assert instances["straight"].shape == (2, 4)
@@ -90,6 +124,10 @@ def test_build_instances_buckets_road_tiles_by_shape_with_correct_yaw():
     assert yaws == [0.0, 90.0]
     assert instances["cross"].shape == (1, 4)
     assert instances["cross"][0, 3] == 0.0
+    assert instances["corner"].shape == (1, 4)
+    assert instances["corner"][0, 3] == 180.0
+    assert instances["tee"].shape == (1, 4)
+    assert instances["tee"][0, 3] == 180.0
 
 
 def test_road_role_to_shape_yaw_covers_all_seven_roles():
@@ -98,7 +136,7 @@ def test_road_role_to_shape_yaw_covers_all_seven_roles():
         "tee_ne", "tee_nw", "cross"}
     for shape, yaw in ROAD_ROLE_TO_SHAPE_YAW.values():
         assert shape in ROAD_MATERIALS
-        assert yaw in (0.0, 90.0)
+        assert yaw in (0.0, 90.0, 180.0, 270.0)
 
 
 def test_build_instances_buckets_urban_block_tiles_by_archetype():
@@ -112,6 +150,83 @@ def test_build_instances_buckets_urban_block_tiles_by_archetype():
     instances = build_instances(tiles)
     assert "house" in instances
     assert instances["house"].shape == (1, 4)
+
+
+def test_build_instances_produces_road_instances_from_a_real_city_layout():
+    """Integration check for Finding 1/3: a real IsoCity layout at a
+    population large enough to trigger road network growth (per the P2
+    review's own investigation) must actually produce road instances once
+    build_instances() correctly reads UrbanRoad.role. Before the Finding 1
+    fix, this test would fail with road_instance_count == 0 because the raw
+    UrbanRoad payload was never matching ROAD_ROLE_TO_SHAPE_YAW.
+
+    Building instances are deliberately NOT asserted here: the review found
+    urban_block tiles never survive _layout()'s dense-downtown overwrite for
+    any population tested, so BUILDING_MATERIALS counts are legitimately
+    zero right now -- a separate, already-tracked issue this fix pass does
+    not touch (iso_city.py's layout logic is out of scope)."""
+    rect = pygame.Rect(0, 0, 1400, 410)
+    city = IsoCity(None)
+    city._layout(rect, 2_000_000, ("gas",))
+    instances = build_instances(city.tiles)
+    road_instance_count = sum(len(v) for k, v in instances.items() if k in ROAD_MATERIALS)
+    assert road_instance_count > 0
+
+
+def _mesh_open_arms(shape, threshold=1.5):
+    """For a baked road mesh's `pos` array, return the set of unit (x, z)
+    directions whose extreme value reaches close to the tile edge -- i.e.
+    the mesh's open "connection arms" at yaw=0. A simple, GL-free geometry
+    check standing in for a full render: it only inspects the bounding box
+    of baked vertex positions, not actual rendered pixels."""
+    data = np.load(MESH_DIR / "roads" / f"{shape}.npz")
+    pos = data["pos"]
+    arms = set()
+    for axis, positive in (("x", True), ("x", False), ("z", True), ("z", False)):
+        col = pos[:, 0] if axis == "x" else pos[:, 2]
+        extreme = col.max() if positive else col.min()
+        if abs(extreme) >= threshold:
+            vec = (1, 0) if axis == "x" else (0, 1)
+            if not positive:
+                vec = (-vec[0], -vec[1])
+            arms.add(vec)
+    return arms
+
+
+def _rotate(vec, yaw_deg):
+    """Same 2D rotation the vertex shader applies to (x, z): new_x = x*cos -
+    z*sin, new_z = x*sin + z*cos."""
+    theta = np.deg2rad(yaw_deg)
+    c, s = np.cos(theta), np.sin(theta)
+    x, z = vec
+    return (round(x * c - z * s), round(x * s + z * c))
+
+
+# Each role's required neighbor directions in (x, z) unit vectors, per
+# ui.road_network.assign_roles's docstring and this module's position
+# formula (up/row-1 -> +X, down/row+1 -> -X, left/col-1 -> -Z,
+# right/col+1 -> +Z).
+_ROLE_REQUIRED_ARMS = {
+    "straight_ne": {(1, 0), (-1, 0)},           # up + down
+    "straight_nw": {(0, 1), (0, -1)},           # left + right
+    "corner_ne": {(1, 0), (0, 1)},              # up + right
+    "corner_nw": {(-1, 0), (0, -1)},            # down + left
+    "tee_ne": {(1, 0), (-1, 0), (0, -1)},       # up + down + left
+    "tee_nw": {(0, 1), (0, -1), (-1, 0)},       # left + right + down
+}
+
+
+def test_road_mesh_geometry_arms_match_yaw_rotated_role_connectivity():
+    """Pure numpy/geometry check tying each baked road mesh's actual open
+    arms (from its .npz bounding box) to the neighbor connectivity its role
+    name requires, once rotated by ROAD_ROLE_TO_SHAPE_YAW's yaw -- no GL
+    context needed. `cross` is 4-way symmetric so it is not checked here
+    (any yaw is equally valid for it)."""
+    for role, required in _ROLE_REQUIRED_ARMS.items():
+        shape, yaw = ROAD_ROLE_TO_SHAPE_YAW[role]
+        base_arms = _mesh_open_arms(shape)
+        rotated_arms = {_rotate(arm, yaw) for arm in base_arms}
+        assert required <= rotated_arms, (role, shape, yaw, required, rotated_arms)
 
 
 class _FakeCamera:

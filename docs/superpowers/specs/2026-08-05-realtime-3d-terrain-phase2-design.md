@@ -49,15 +49,29 @@ dedicated cleanup, not folded into this phase's scope.
 
 `road_network.assign_roles` (`ui/road_network.py:168-216`) emits 7 role strings — `cross`,
 `tee_ne`, `tee_nw`, `straight_ne`, `straight_nw`, `corner_ne`, `corner_nw` — but these are just 4
-geometric shapes (cross / tee / straight / corner) at 0° or 90°. Bake **4 base meshes**, not 7,
-and apply per-instance yaw at render time:
+geometric shapes (cross / tee / straight / corner) at one of {0°, 90°, 180°}. Bake **4 base
+meshes**, not 7, and apply per-instance yaw at render time:
 
 | shape | source glTF | roles → yaw |
 |---|---|---|
 | straight | `Roads/road-straight-1.gltf` | `straight_ne`→0°, `straight_nw`→90° |
-| corner | `Roads/road-edgy-curve-1.gltf` | `corner_ne`→0°, `corner_nw`→90° |
-| tee | `Roads/road-edgy-3-way-crossing-1.gltf` | `tee_ne`→0°, `tee_nw`→90° |
+| corner | `Roads/road-edgy-curve-1.gltf` | `corner_ne`→0°, `corner_nw`→180° |
+| tee | `Roads/road-edgy-3-way-crossing-1.gltf` | `tee_ne`→180°, `tee_nw`→90° |
 | cross | `Roads/road-edgy-4-way-crossing-1.gltf` | `cross`→0° (rotationally symmetric) |
+
+**CORRECTED post-Phase-2-review** (2026-08-05 final review, Finding 2): the table above
+originally listed `corner_nw`→90° and `tee_ne`→0°, which is geometrically wrong — those two
+yaws don't orient the mesh's open arms to the neighbor directions the role name requires. The
+values shown here were independently re-derived by rotating each baked mesh's `pos` bounding-box
+"arms" (its open connection directions at yaw=0, read from `assets/terrain3d/roads/*.npz`)
+against the up/down/left/right neighbor semantics in `assign_roles`'s docstring, combined with
+`terrain3d.py`'s own tile-position formula (`x = -row*TILE_SPACING`, `z = col*TILE_SPACING`, so
+up/row-1→+X, down/row+1→-X, left/col-1→-Z, right/col+1→+Z) and the vertex shader's yaw rotation.
+`tee_nw`→90° was already correct in the original table and needed no change, despite an initial
+review pass claiming it should move to 270° — that claim did not hold up under independent
+re-derivation (see `terrain3d.py`'s `ROAD_ROLE_TO_SHAPE_YAW` comment and
+`test_terrain3d.py`'s `test_road_mesh_geometry_arms_match_yaw_rotated_role_connectivity`, which
+checks all six non-symmetric roles' rotated arms against required connectivity numerically).
 
 This requires the instance format to carry rotation, which Phase 1's format didn't need
 (terrain tiles have no orientation). See Component design below.

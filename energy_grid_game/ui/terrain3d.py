@@ -27,10 +27,31 @@ MATERIALS = ("grass", "farm", "tree", "water", "mountain")
 ROAD_MATERIALS = ("straight", "corner", "tee", "cross")
 BUILDING_MATERIALS = ("house", "shop", "block", "midrise", "tower")
 
+# Derived by rotating each baked mesh's default (yaw=0) open "arms" -- read
+# from its .npz `pos` bounding box -- against the neighbor directions
+# ui.road_network.assign_roles's docstring assigns to each role, using this
+# module's own position formula (x = -row*TILE_SPACING, z = col*TILE_SPACING,
+# so up/row-1 -> +X, down/row+1 -> -X, left/col-1 -> -Z, right/col+1 -> +Z)
+# and the shader's yaw rotation (new_x = x*cos(yaw) - z*sin(yaw),
+# new_z = x*sin(yaw) + z*cos(yaw)):
+#   straight.npz default arms: +X, -X (the through-axis is X at yaw=0).
+#     straight_ne wants up+down (+-X) -> yaw 0. straight_nw wants
+#     left+right (+-Z) -> yaw 90 rotates the X arms onto Z.
+#   corner.npz default arms: +X, +Z.
+#     corner_ne wants up+right (+X,+Z) -> yaw 0 (exact match already).
+#     corner_nw wants down+left (-X,-Z) -> yaw 180 (negates both arms).
+#   tee.npz default arms: +X, -X, +Z (missing -Z).
+#     tee_ne wants up+down+left (+X,-X,-Z) -> yaw 180 turns the missing arm
+#     from -Z to +Z... i.e. rotating the {+X,-X,+Z} set by 180 gives
+#     {-X,+X,-Z}, which matches. tee_nw wants left+right+down (-Z,+Z,-X) ->
+#     yaw 90 rotates {+X,-X,+Z} to {+Z,-Z,-X}, which matches -- yaw 90 is
+#     already correct, no change needed from the original mapping.
+#   cross.npz is 4-way symmetric, so its yaw is irrelevant; 0 is as good as
+#   any other value.
 ROAD_ROLE_TO_SHAPE_YAW = {
     "straight_ne": ("straight", 0.0), "straight_nw": ("straight", 90.0),
-    "corner_ne": ("corner", 0.0), "corner_nw": ("corner", 90.0),
-    "tee_ne": ("tee", 0.0), "tee_nw": ("tee", 90.0),
+    "corner_ne": ("corner", 0.0), "corner_nw": ("corner", 180.0),
+    "tee_ne": ("tee", 180.0), "tee_nw": ("tee", 90.0),
     "cross": ("cross", 0.0),
 }
 
@@ -56,11 +77,21 @@ def build_instances(tiles):
     projected result matches ui.iso_city.iso_xy's (col - row, col + row)
     diamond axes -- see test_build_instances_matches_iso_xy_sign_convention.
 
-    Phase 2 also buckets `road` tiles (payload is a role string like
-    "straight_ne", mapped to a shape+yaw via ROAD_ROLE_TO_SHAPE_YAW) and
-    `urban_block` tiles (payload is a ui.urban_blocks.UrbanBlock whose
-    .buildings[0] is the archetype name, e.g. "house") into the
-    ROAD_MATERIALS/BUILDING_MATERIALS buckets alongside the terrain ones.
+    Phase 2 also buckets `road` tiles (payload is a
+    ui.road_network.RoadNetwork/ui.urban_blocks.UrbanRoad instance whose
+    `.role` attribute is a role string like "straight_ne", mapped to a
+    shape+yaw via ROAD_ROLE_TO_SHAPE_YAW) and `urban_block` tiles (payload is
+    a ui.urban_blocks.UrbanBlock whose .buildings[0] is the archetype name,
+    e.g. "house") into the ROAD_MATERIALS/BUILDING_MATERIALS buckets
+    alongside the terrain ones.
+
+    An unrecognized road role or building archetype raises ValueError rather
+    than silently dropping the tile -- a previous silent-skip here is exactly
+    what let every real road tile go undrawn undetected (the payload's
+    `.role` wasn't even being read). Fully unrecognized top-level `kind`
+    values (e.g. "park", "campus", "pad") are still silently skipped, since
+    that's established Phase 1 behavior for tile kinds this module simply
+    doesn't render.
     """
     buckets = {m: [] for m in MATERIALS + ROAD_MATERIALS + BUILDING_MATERIALS}
     for (col, row), (kind, extra) in tiles.items():
@@ -68,13 +99,17 @@ def build_instances(tiles):
         z = float(col) * TILE_SPACING
         if kind in MATERIALS:
             buckets[kind].append((x, 0.0, z, 0.0))
-        elif kind == "road" and extra in ROAD_ROLE_TO_SHAPE_YAW:
-            shape, yaw = ROAD_ROLE_TO_SHAPE_YAW[extra]
+        elif kind == "road":
+            role = getattr(extra, "role", None)
+            if role not in ROAD_ROLE_TO_SHAPE_YAW:
+                raise ValueError(f"unrecognized road role: {role!r}")
+            shape, yaw = ROAD_ROLE_TO_SHAPE_YAW[role]
             buckets[shape].append((x, 0.0, z, yaw))
         elif kind == "urban_block":
             archetype = extra.buildings[0]
-            if archetype in BUILDING_MATERIALS:
-                buckets[archetype].append((x, 0.0, z, 0.0))
+            if archetype not in BUILDING_MATERIALS:
+                raise ValueError(f"unrecognized building archetype: {archetype!r}")
+            buckets[archetype].append((x, 0.0, z, 0.0))
     return {
         m: np.array(offsets, dtype="f4").reshape(-1, 4)
         for m, offsets in buckets.items()
