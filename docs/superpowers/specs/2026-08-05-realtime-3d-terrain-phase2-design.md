@@ -56,7 +56,7 @@ meshes**, not 7, and apply per-instance yaw at render time:
 |---|---|---|
 | straight | `Roads/road-straight-1.gltf` | `straight_ne`→0°, `straight_nw`→90° |
 | corner | `Roads/road-edgy-curve-1.gltf` | `corner_ne`→0°, `corner_nw`→180° |
-| tee | `Roads/road-edgy-3-way-crossing-1.gltf` | `tee_ne`→180°, `tee_nw`→90° |
+| tee | `Roads/road-edgy-3-way-crossing-1.gltf` | `tee_ne`→180°, `tee_nw`→270° |
 | cross | `Roads/road-edgy-4-way-crossing-1.gltf` | `cross`→0° (rotationally symmetric) |
 
 **CORRECTED post-Phase-2-review** (2026-08-05 final review, Finding 2): the table above
@@ -67,11 +67,16 @@ values shown here were independently re-derived by rotating each baked mesh's `p
 against the up/down/left/right neighbor semantics in `assign_roles`'s docstring, combined with
 `terrain3d.py`'s own tile-position formula (`x = -row*TILE_SPACING`, `z = col*TILE_SPACING`, so
 up/row-1→+X, down/row+1→-X, left/col-1→-Z, right/col+1→+Z) and the vertex shader's yaw rotation.
-`tee_nw`→90° was already correct in the original table and needed no change, despite an initial
-review pass claiming it should move to 270° — that claim did not hold up under independent
-re-derivation (see `terrain3d.py`'s `ROAD_ROLE_TO_SHAPE_YAW` comment and
-`test_terrain3d.py`'s `test_road_mesh_geometry_arms_match_yaw_rotated_role_connectivity`, which
-checks all six non-symmetric roles' rotated arms against required connectivity numerically).
+`tee_nw`→90° was this review pass's conclusion, but a later independent re-derivation found that
+conclusion itself rested on a transposed (sign-flipped) reading of the vertex shader's rotation
+matrix: the shader builds `mat3(c,0,-s, 0,1,0, s,0,c)` via GLSL's column-major constructor
+argument order, which works out to `new_x = x*cos(yaw) + z*sin(yaw)`, `new_z = -x*sin(yaw) +
+z*cos(yaw)` — not the transposed `new_x = x*cos - z*sin, new_z = x*sin + z*cos` this pass used.
+Re-applying the correct (non-transposed) rotation to `tee.npz`'s default arms {+X,-X,+Z} confirms
+`tee_nw`→270° is the exact match (90° instead yields {-Z,+Z,+X}, which has +X where -X is
+required). See `terrain3d.py`'s `ROAD_ROLE_TO_SHAPE_YAW` comment and `test_terrain3d.py`'s
+`test_road_mesh_geometry_arms_match_yaw_rotated_role_connectivity`, which checks all six
+non-symmetric roles' rotated arms against required connectivity numerically.
 
 This requires the instance format to carry rotation, which Phase 1's format didn't need
 (terrain tiles have no orientation). See Component design below.

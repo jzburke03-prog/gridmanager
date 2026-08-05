@@ -194,12 +194,14 @@ def _mesh_open_arms(shape, threshold=1.5):
 
 
 def _rotate(vec, yaw_deg):
-    """Same 2D rotation the vertex shader applies to (x, z): new_x = x*cos -
-    z*sin, new_z = x*sin + z*cos."""
+    """Same 2D rotation the vertex shader applies to (x, z). The shader
+    builds `mat3(c,0,-s, 0,1,0, s,0,c)` via GLSL's column-major constructor,
+    which is the matrix [[c,0,s],[0,1,0],[-s,0,c]]: new_x = x*cos(yaw) +
+    z*sin(yaw), new_z = -x*sin(yaw) + z*cos(yaw)."""
     theta = np.deg2rad(yaw_deg)
     c, s = np.cos(theta), np.sin(theta)
     x, z = vec
-    return (round(x * c - z * s), round(x * s + z * c))
+    return (round(x * c + z * s), round(-x * s + z * c))
 
 
 # Each role's required neighbor directions in (x, z) unit vectors, per

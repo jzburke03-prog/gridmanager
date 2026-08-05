@@ -32,8 +32,15 @@ BUILDING_MATERIALS = ("house", "shop", "block", "midrise", "tower")
 # ui.road_network.assign_roles's docstring assigns to each role, using this
 # module's own position formula (x = -row*TILE_SPACING, z = col*TILE_SPACING,
 # so up/row-1 -> +X, down/row+1 -> -X, left/col-1 -> -Z, right/col+1 -> +Z)
-# and the shader's yaw rotation (new_x = x*cos(yaw) - z*sin(yaw),
-# new_z = x*sin(yaw) + z*cos(yaw)):
+# and the shader's yaw rotation. The shader builds `mat3(c,0,-s, 0,1,0, s,0,c)`
+# from GLSL's *column-major* constructor argument order, which works out to
+# the matrix [[c,0,s],[0,1,0],[-s,0,c]] -- i.e. new_x = x*cos(yaw) + z*sin(yaw),
+# new_z = -x*sin(yaw) + z*cos(yaw). (An earlier fix pass used the transposed
+# form new_x = x*cos - z*sin, new_z = x*sin + z*cos, which is rotation by
+# -yaw instead of +yaw; that only happened to be invisible for the other
+# roles and silently miscomputed tee_nw. A later independent re-derivation
+# caught the transpose and confirmed the values below numerically against
+# the baked tee.npz mesh.)
 #   straight.npz default arms: +X, -X (the through-axis is X at yaw=0).
 #     straight_ne wants up+down (+-X) -> yaw 0. straight_nw wants
 #     left+right (+-Z) -> yaw 90 rotates the X arms onto Z.
@@ -43,15 +50,16 @@ BUILDING_MATERIALS = ("house", "shop", "block", "midrise", "tower")
 #   tee.npz default arms: +X, -X, +Z (missing -Z).
 #     tee_ne wants up+down+left (+X,-X,-Z) -> yaw 180 turns the missing arm
 #     from -Z to +Z... i.e. rotating the {+X,-X,+Z} set by 180 gives
-#     {-X,+X,-Z}, which matches. tee_nw wants left+right+down (-Z,+Z,-X) ->
-#     yaw 90 rotates {+X,-X,+Z} to {+Z,-Z,-X}, which matches -- yaw 90 is
-#     already correct, no change needed from the original mapping.
+#     {-X,+X,-Z}, which matches. tee_nw wants left+right+down (-Z,+Z,-X) --
+#     applying the correct (non-transposed) rotation, yaw 270 rotates
+#     {+X,-X,+Z} to {+Z,-Z,-X}, which is an exact match. (yaw 90 gives
+#     {-Z,+Z,+X} instead -- it has +X where -X is needed, so it's wrong.)
 #   cross.npz is 4-way symmetric, so its yaw is irrelevant; 0 is as good as
 #   any other value.
 ROAD_ROLE_TO_SHAPE_YAW = {
     "straight_ne": ("straight", 0.0), "straight_nw": ("straight", 90.0),
     "corner_ne": ("corner", 0.0), "corner_nw": ("corner", 180.0),
-    "tee_ne": ("tee", 180.0), "tee_nw": ("tee", 90.0),
+    "tee_ne": ("tee", 180.0), "tee_nw": ("tee", 270.0),
     "cross": ("cross", 0.0),
 }
 
