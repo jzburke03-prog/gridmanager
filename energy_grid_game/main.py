@@ -7,7 +7,7 @@ from game_state import (GameState, WINDOW_WIDTH, WINDOW_HEIGHT, FPS,
                          DEMAND_MIN_MW, DEMAND_PEAK_MW,
                          SEVERE_LOW_THRESHOLD, SEVERE_HIGH_THRESHOLD, MAX_FILL_PCT,
                          instructional_complete, mark_instructional_complete)
-from ui import instructional_data
+from ui import gl_context, instructional_data, terrain3d
 from ui.demand_chart import DemandChart
 from ui.iso_city import IsoCity
 from ui.plant_pins import PlantPins
@@ -26,8 +26,8 @@ MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT = 1000, 680
 
 # Demand chart and the homes readout are small inset cards floating over the
 # city, which occupies the entire frame behind the three HUD islands.
-CHART_W, CHART_H = 300, 170
-CHART_MARGIN = 18
+CHART_W, CHART_H = 292, 158
+CHART_MARGIN = 28
 
 
 def clear_frame(frame):
@@ -43,7 +43,7 @@ def compute_layout(screen_w, screen_h):
     panels = hud_panel_rects(screen_w, screen_h)
     hud_h = max(rect.bottom for rect in panels.values()) + 42
     cw = max(196, min(CHART_W, int(screen_w * 0.22)))
-    ch = max(112, min(CHART_H, int(city_rect.height * 0.52)))
+    ch = max(112, min(CHART_H, int(city_rect.height * 0.34)))
     chart_rect = pygame.Rect(city_rect.left + CHART_MARGIN,
                               city_rect.bottom - ch - CHART_MARGIN, cw, ch)
     readout_rect = pygame.Rect(city_rect.right - cw - CHART_MARGIN,
@@ -93,6 +93,15 @@ def main():
     plant_pins = PlantPins(font, font_small, font_bold)
     demand_chart = DemandChart(chart_rect, font_small)
     city = IsoCity(font_small, font)
+    try:
+        gl_ctx = gl_context.create_context()
+    except gl_context.UnsupportedGLError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+    terrain3d_prog = terrain3d.create_program(gl_ctx)
+    terrain3d_meshes = terrain3d.load_meshes(gl_ctx, terrain3d_prog)
+    terrain3d_key = None
+    terrain3d_fbo = None
     speed_control = SpeedControl((hud_panels["left"].left + 10,
                                   hud_panels["left"].top + 60), font_small, font)
     hud = HUD(font, font_small, font_big, font_mono_big)
@@ -131,7 +140,7 @@ def main():
         # fetch fell back to the synthetic grid, say so instead of silently
         # serving a 1000 MW stand-in for a 40 GW authority.
         if cfg.mode in ("region", "scenario") and cfg.data_source == "synthetic":
-            state.flash_messages.append(["LIVE DATA UNAVAILABLE — SYNTHETIC GRID", 6.0])
+            state.flash_messages.append(["LIVE DATA UNAVAILABLE: SYNTHETIC GRID", 6.0])
         # The guided tutorial only runs on the Standard grid; region/scenario
         # players already know the ropes, so close it out of their way. A fresh
         # Standard game from the menu gets a brand-new tutorial (the manager is
@@ -321,6 +330,18 @@ def main():
                              hud_panels["left"].top + 60)
         demand_chart.rect = chart_rect
         city.prepare(city_rect, state)
+        if city.layout_key != terrain3d_key:
+            terrain3d.upload_instances(gl_ctx, terrain3d_meshes,
+                                        terrain3d.build_instances(city.tiles))
+            terrain3d_key = city.layout_key
+        if terrain3d_fbo is None or terrain3d_fbo.size != city_rect.size:
+            terrain3d_fbo = terrain3d.create_framebuffer(gl_ctx, city_rect.size)
+        terrain3d.draw(gl_ctx, terrain3d_prog, terrain3d_meshes, terrain3d_fbo, city.camera)
+        rgba, size = terrain3d.read_rgba(terrain3d_fbo)
+        # Rendered here (right after city.prepare, off the pygame surface) but
+        # blitted onto `frame` later, right before city.draw -- clear_frame(frame)
+        # runs between here and there and would otherwise wipe this out.
+        terrain3d_surface = terrain3d.to_surface(rgba, size)
         markers = city.plant_markers(city_rect)
         pin_obstacles = (chart_rect, readout_rect, hud_panels["outer"])
         pin_layout = plant_pins.layout(state.active_sources, markers,
@@ -393,16 +414,17 @@ def main():
         #    particles are drawn over it.
         environment = sample_atmosphere(
             state.sim_hour, state.active_event.kind if state.active_event else None)
+        frame.blit(terrain3d_surface, city_rect.topleft)
         city.draw(frame, city_rect, state, environment)
         atmosphere_layer.draw(frame, city_rect, environment, dt)
 
         # 2. inset cards and controls floating over the city
         demand_chart.draw(frame, state.sim_hour, state.sources, state.history,
                           state.demand_mw, state.demand_min_mw, state.demand_peak_mw)
-        city.draw_homes_label(frame, readout_rect, state.homes_without_power, state.homes_total)
         plant_pins.draw(frame, state.active_sources, city.plant_markers(city_rect),
                         pin_obstacles, city_rect, state.demand_level,
-                        show_price=state.show_economics)
+                        show_price=state.show_economics,
+                        instructional=state.config.is_instructional)
 
         # 5. normal HUD
         hud.draw(frame, state, hud_panels)
