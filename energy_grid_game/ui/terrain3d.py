@@ -42,17 +42,23 @@ def build_instances(tiles):
     `tiles` is shaped like IsoCity.tiles: {(col, row): (kind, extra)}. Tiles
     whose kind isn't one of MATERIALS (roads, buildings, parks, etc. -- still
     2D-sprite-rendered in Phase 1) are skipped. Each terrain tile becomes one
-    (col * TILE_SPACING, 0, -row * TILE_SPACING) world-space offset; y=0 for
+    (-row * TILE_SPACING, 0, col * TILE_SPACING) world-space offset; y=0 for
     all materials in Phase 1 (mountain height/elevation is a Phase 4 polish
     item, not consumed here yet even though the tile payload carries it).
-    The row component is negated so the grid's screen-space orientation,
-    once projected through CAM_ROT below, matches ui.iso_city.iso_xy's
-    (col - row, col + row) diamond axes."""
+    col and row are swapped (col feeds world Z, row feeds world -X) so that,
+    once projected through CAM_ROT below, the on-screen result matches
+    ui.iso_city.iso_xy's (col - row, col + row) diamond axes: screen_x ends
+    up proportional to (col - row) and screen_y proportional to (col + row).
+    A naive "negate row only" offset (col * S, 0, -row * S) gets screen_x
+    right but mirrors screen_y -- see
+    test_build_instances_matches_iso_xy_sign_convention below, which
+    verifies this by projecting through the real camera math instead of
+    just re-checking the formula."""
     buckets = {material: [] for material in MATERIALS}
     for (col, row), (kind, _extra) in tiles.items():
         if kind in buckets:
             buckets[kind].append(
-                (float(col) * TILE_SPACING, 0.0, -float(row) * TILE_SPACING))
+                (-float(row) * TILE_SPACING, 0.0, float(col) * TILE_SPACING))
     return {
         material: np.array(offsets, dtype="f4").reshape(-1, 3)
         for material, offsets in buckets.items()
@@ -70,7 +76,7 @@ LIGHT = LIGHT / np.linalg.norm(LIGHT)
 # tools/bake_gltf_terrain.py): rotate 45 deg around Y, then ~35.264 deg
 # around X, dropped to an orthographic screen. This is the same fixed
 # isometric camera used throughout this project, chosen to visually match
-# the existing iso_xy screen orientation (the row negation in
+# the existing iso_xy screen orientation (the col/row swap-and-negate in
 # build_instances() above is what actually aligns the two axes; this
 # camera does not by itself produce a 2:1 screen ratio).
 _AY = np.deg2rad(45.0)

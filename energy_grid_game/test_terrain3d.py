@@ -6,7 +6,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
 
-from ui.terrain3d import MATERIALS, TILE_SPACING, build_instances
+from ui.terrain3d import CAM_ROT, MATERIALS, TILE_SPACING, build_instances
+from ui.iso_city import iso_xy
 
 import os as _os
 _os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -38,7 +39,7 @@ def test_build_instances_buckets_by_material_and_skips_non_terrain_kinds():
 def test_build_instances_offset_matches_col_row():
     tiles = {(3, 5): ("grass", None)}
     instances = build_instances(tiles)
-    expected = np.array([3.0 * TILE_SPACING, 0.0, -5.0 * TILE_SPACING], dtype="f4")
+    expected = np.array([-5.0 * TILE_SPACING, 0.0, 3.0 * TILE_SPACING], dtype="f4")
     assert np.array_equal(instances["grass"][0], expected)
 
 
@@ -51,6 +52,28 @@ def test_build_instances_groups_multiple_tiles_of_the_same_material():
 def test_build_instances_omits_materials_with_no_tiles():
     instances = build_instances({(0, 0): ("water", None)})
     assert set(instances) == {"water"}
+
+
+def test_build_instances_matches_iso_xy_sign_convention():
+    """The bug this test exists to catch: negating only `row` (the old
+    formula) gets screen_x right but mirrors screen_y. Project a handful of
+    build_instances() offsets through the actual camera math (CAM_ROT) that
+    terrain3d.py uses at draw time, derive (sx, screen_y) the same way
+    _VERTEX_SHADER does (sx = cam.x * scale, screen_y = -cam.y * scale --
+    scale is a positive constant so only the signs matter here), and check
+    those signs against ui.iso_city.iso_xy(col, row)'s (x, y) signs for
+    several distinct tiles. (0, 0) is skipped since both axes are zero
+    there and (1, 1) is skipped since its projected screen_x lands exactly
+    on zero -- neither has a sign to compare."""
+    for col, row in [(1, 0), (0, 1), (2, 1)]:
+        tiles = {(col, row): ("grass", None)}
+        offset = build_instances(tiles)["grass"][0]
+        cam = CAM_ROT @ offset
+        sx = cam[0]
+        screen_y = -cam[1]
+        iso_x, iso_y = iso_xy(col, row)
+        assert np.sign(sx) == np.sign(iso_x), (col, row, sx, iso_x)
+        assert np.sign(screen_y) == np.sign(iso_y), (col, row, screen_y, iso_y)
 
 
 class _FakeCamera:
