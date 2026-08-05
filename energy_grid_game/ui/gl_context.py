@@ -28,9 +28,17 @@ def format_unsupported_message(version_code, min_version_code):
 
 def create_context(min_version_code=MIN_VERSION_CODE):
     """Create a headless GL context, or raise UnsupportedGLError with a
-    readable message if the driver's GL version is too old. No fallback
-    renderer -- callers should let this propagate to a clean startup exit."""
-    ctx = moderngl.create_standalone_context()
+    readable message if the driver's GL version is too old, or if no usable
+    GL backend/driver exists at all (the more common real-world failure).
+    No fallback renderer -- callers should let this propagate to a clean
+    startup exit."""
+    try:
+        ctx = moderngl.create_standalone_context()
+    except Exception as exc:
+        raise UnsupportedGLError(
+            f"Grid Manager requires OpenGL {_version_str(min_version_code)}+; "
+            f"failed to create a GL context: {exc}"
+        ) from exc
     if ctx.version_code < min_version_code:
         version_code = ctx.version_code
         ctx.release()

@@ -1738,6 +1738,7 @@ class IsoCity:
         self.font_label = font_label or font
         self.t = 0.0
         self._key = None          # (rect size, population bucket, fleet)
+        self._tiles = {}          # populated by _layout(); safe to read before prepare()
         self._road_network = None   # persistent RoadNetwork; created once, only grows
         self._base_day = None
         self._base_night = None

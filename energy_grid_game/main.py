@@ -1,4 +1,5 @@
 """Grid Keeper: entry point and game loop."""
+import os
 import random
 import sys
 import pygame
@@ -20,6 +21,17 @@ from ui.menu import MenuSystem
 from audio import AudioManager
 
 BG_COLOR = (13, 17, 23)
+
+# Phase 1 stopgap: the 3D terrain layer renders correctly but is fully
+# hidden behind IsoCity's existing opaque 2D countryside sprites (a later
+# phase will stop drawing those so the 3D layer becomes visible), so it's
+# opt-in and OFF by default -- normal players pay none of its GPU/CPU cost
+# and don't need a working OpenGL driver until that later phase lands.
+def _terrain3d_enabled():
+    return os.environ.get("GRIDMANAGER_TERRAIN3D", "").strip().lower() in ("1", "true", "yes")
+
+
+TERRAIN3D_ENABLED = _terrain3d_enabled()
 
 # Resizes are clamped before the HUD and city become unusably small.
 MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT = 1000, 680
@@ -93,15 +105,17 @@ def main():
     plant_pins = PlantPins(font, font_small, font_bold)
     demand_chart = DemandChart(chart_rect, font_small)
     city = IsoCity(font_small, font)
-    try:
-        gl_ctx = gl_context.create_context()
-    except gl_context.UnsupportedGLError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(1)
-    terrain3d_prog = terrain3d.create_program(gl_ctx)
-    terrain3d_meshes = terrain3d.load_meshes(gl_ctx, terrain3d_prog)
+    gl_ctx = terrain3d_prog = terrain3d_meshes = None
     terrain3d_key = None
     terrain3d_fbo = None
+    if TERRAIN3D_ENABLED:
+        try:
+            gl_ctx = gl_context.create_context()
+        except gl_context.UnsupportedGLError as exc:
+            print(str(exc), file=sys.stderr)
+            sys.exit(1)
+        terrain3d_prog = terrain3d.create_program(gl_ctx)
+        terrain3d_meshes = terrain3d.load_meshes(gl_ctx, terrain3d_prog)
     speed_control = SpeedControl((hud_panels["left"].left + 10,
                                   hud_panels["left"].top + 60), font_small, font)
     hud = HUD(font, font_small, font_big, font_mono_big)
@@ -330,18 +344,27 @@ def main():
                              hud_panels["left"].top + 60)
         demand_chart.rect = chart_rect
         city.prepare(city_rect, state)
-        if city.layout_key != terrain3d_key:
-            terrain3d.upload_instances(gl_ctx, terrain3d_meshes,
-                                        terrain3d.build_instances(city.tiles))
-            terrain3d_key = city.layout_key
-        if terrain3d_fbo is None or terrain3d_fbo.size != city_rect.size:
-            terrain3d_fbo = terrain3d.create_framebuffer(gl_ctx, city_rect.size)
-        terrain3d.draw(gl_ctx, terrain3d_prog, terrain3d_meshes, terrain3d_fbo, city.camera)
-        rgba, size = terrain3d.read_rgba(terrain3d_fbo)
-        # Rendered here (right after city.prepare, off the pygame surface) but
-        # blitted onto `frame` later, right before city.draw -- clear_frame(frame)
-        # runs between here and there and would otherwise wipe this out.
-        terrain3d_surface = terrain3d.to_surface(rgba, size)
+        terrain3d_surface = None
+        if TERRAIN3D_ENABLED:
+            if city.layout_key != terrain3d_key:
+                terrain3d.upload_instances(gl_ctx, terrain3d_meshes,
+                                            terrain3d.build_instances(city.tiles))
+                terrain3d_key = city.layout_key
+            if terrain3d_fbo is None or terrain3d_fbo.size != city_rect.size:
+                if terrain3d_fbo is not None:
+                    # Framebuffer.release() does not release its attachments;
+                    # do that explicitly or every resize leaks a texture and
+                    # a depth renderbuffer.
+                    terrain3d_fbo.color_attachments[0].release()
+                    terrain3d_fbo.depth_attachment.release()
+                    terrain3d_fbo.release()
+                terrain3d_fbo = terrain3d.create_framebuffer(gl_ctx, city_rect.size)
+            terrain3d.draw(gl_ctx, terrain3d_prog, terrain3d_meshes, terrain3d_fbo, city.camera)
+            rgba, size = terrain3d.read_rgba(terrain3d_fbo)
+            # Rendered here (right after city.prepare, off the pygame surface) but
+            # blitted onto `frame` later, right before city.draw -- clear_frame(frame)
+            # runs between here and there and would otherwise wipe this out.
+            terrain3d_surface = terrain3d.to_surface(rgba, size)
         markers = city.plant_markers(city_rect)
         pin_obstacles = (chart_rect, readout_rect, hud_panels["outer"])
         pin_layout = plant_pins.layout(state.active_sources, markers,
@@ -414,7 +437,8 @@ def main():
         #    particles are drawn over it.
         environment = sample_atmosphere(
             state.sim_hour, state.active_event.kind if state.active_event else None)
-        frame.blit(terrain3d_surface, city_rect.topleft)
+        if terrain3d_surface is not None:
+            frame.blit(terrain3d_surface, city_rect.topleft)
         city.draw(frame, city_rect, state, environment)
         atmosphere_layer.draw(frame, city_rect, environment, dt)
 

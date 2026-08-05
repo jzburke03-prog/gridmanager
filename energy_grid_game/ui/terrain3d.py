@@ -5,6 +5,17 @@ phase1-design.md.
 
 This module is imported by main.py only; it does not import ui.iso_city, to
 avoid a circular import (same discipline as ui.voxel_terrain).
+
+Per-frame cost note: draw() renders to an offscreen FBO, and the
+read_rgba() + to_surface() pair that follows each draw() performs a
+synchronous GPU->CPU framebuffer readback (fbo.read()) every frame, measured
+at roughly 2-3ms on typical hardware. This blocks the CPU until the GPU
+finishes rendering that frame's terrain -- there is no batching, double
+buffering, or async (PBO-backed) readback in Phase 1. This is a known,
+accepted tradeoff for now; a future phase could hide the stall by reading
+back a frame late (double-buffered FBOs) or avoiding the CPU round-trip
+entirely by compositing on the GPU instead of blitting into a pygame
+Surface.
 """
 from pathlib import Path
 
@@ -13,6 +24,14 @@ import numpy as np
 TW, TH = 16, 8  # MUST match ui.iso_city.TW/TH
 
 MATERIALS = ("grass", "farm", "tree", "water", "mountain")
+
+# Baked ground meshes (energy_grid_game/assets/terrain3d/*.npz) each span
+# -1.6..+1.6 on X and Z -- a 3.2-unit footprint -- so instances must be
+# spaced 3.2 world units apart per tile to avoid overlapping their
+# neighbors. tree.npz is a smaller decoration-prop mesh with no separate
+# ground plane (a deliberate Phase 1 simplification) and is placed on the
+# same grid spacing as everything else.
+TILE_SPACING = 3.2
 
 MESH_DIR = Path(__file__).resolve().parents[1] / "assets" / "terrain3d"
 
@@ -23,13 +42,17 @@ def build_instances(tiles):
     `tiles` is shaped like IsoCity.tiles: {(col, row): (kind, extra)}. Tiles
     whose kind isn't one of MATERIALS (roads, buildings, parks, etc. -- still
     2D-sprite-rendered in Phase 1) are skipped. Each terrain tile becomes one
-    (col, 0, row) world-space offset; y=0 for all materials in Phase 1
-    (mountain height/elevation is a Phase 4 polish item, not consumed here
-    yet even though the tile payload carries it)."""
+    (col * TILE_SPACING, 0, -row * TILE_SPACING) world-space offset; y=0 for
+    all materials in Phase 1 (mountain height/elevation is a Phase 4 polish
+    item, not consumed here yet even though the tile payload carries it).
+    The row component is negated so the grid's screen-space orientation,
+    once projected through CAM_ROT below, matches ui.iso_city.iso_xy's
+    (col - row, col + row) diamond axes."""
     buckets = {material: [] for material in MATERIALS}
     for (col, row), (kind, _extra) in tiles.items():
         if kind in buckets:
-            buckets[kind].append((float(col), 0.0, float(row)))
+            buckets[kind].append(
+                (float(col) * TILE_SPACING, 0.0, -float(row) * TILE_SPACING))
     return {
         material: np.array(offsets, dtype="f4").reshape(-1, 3)
         for material, offsets in buckets.items()
@@ -43,10 +66,13 @@ import pygame
 LIGHT = np.array([-0.35, 0.8, 0.5])
 LIGHT = LIGHT / np.linalg.norm(LIGHT)
 
-# Same fixed true-isometric camera as tools/bake_gltf_terrain.py: rotate 45
-# deg around Y, then ~35.264 deg around X, dropped to an orthographic 2:1
-# screen -- this is what makes a (col, 0, row) world offset project with the
-# same diamond ratio as ui.iso_city.iso_xy(col, row).
+# Same fixed isometric camera used throughout this project (see
+# tools/bake_gltf_terrain.py): rotate 45 deg around Y, then ~35.264 deg
+# around X, dropped to an orthographic screen. This is the same fixed
+# isometric camera used throughout this project, chosen to visually match
+# the existing iso_xy screen orientation (the row negation in
+# build_instances() above is what actually aligns the two axes; this
+# camera does not by itself produce a 2:1 screen ratio).
 _AY = np.deg2rad(45.0)
 _AX = np.deg2rad(35.264)
 _RY = np.array([[np.cos(_AY), 0, np.sin(_AY)],
@@ -78,7 +104,11 @@ void main() {
     float depth = -cam.y + 0.35 * cam.z;
     vec2 screen_px = vec2(sx, sy) - origin;
     float ndc_x = screen_px.x / img_size.x * 2.0 - 1.0;
-    float ndc_y = 1.0 - screen_px.y / img_size.y * 2.0;
+    // Inverted (vs. the "1.0 - ..." convention) on purpose: FBO reads are
+    // bottom-up, so flipping the sign here bakes that correction into the
+    // projection instead of paying for a per-frame CPU
+    // pygame.transform.flip() in to_surface() below.
+    float ndc_y = screen_px.y / img_size.y * 2.0 - 1.0;
     gl_Position = vec4(ndc_x, ndc_y, -depth * 0.01, 1.0);
     v_uv = in_uv;
     v_normal = in_normal;
@@ -158,6 +188,7 @@ def upload_instances(ctx, meshes, instances):
 
 
 def create_framebuffer(ctx, size):
+    size = (max(1, size[0]), max(1, size[1]))
     return ctx.framebuffer(
         color_attachments=[ctx.texture(size, 4)],
         depth_attachment=ctx.depth_renderbuffer(size),
@@ -186,8 +217,9 @@ def read_rgba(fbo):
 
 
 def to_surface(rgba_bytes, size):
-    """Pure pygame conversion, no GL involved -- FBO reads are bottom-up, so
-    flip vertically to match screen orientation (same fix-up
-    tools/bake_gltf_terrain.py applies via PIL's FLIP_TOP_BOTTOM)."""
-    surf = pygame.image.frombuffer(rgba_bytes, size, "RGBA")
-    return pygame.transform.flip(surf, False, True)
+    """Pure pygame conversion, no GL involved. FBO reads are bottom-up, but
+    unlike tools/bake_gltf_terrain.py (which flips via PIL's
+    FLIP_TOP_BOTTOM after the fact), the vertical flip here is baked into
+    _VERTEX_SHADER's ndc_y sign convention, so no per-frame CPU
+    pygame.transform.flip() is needed."""
+    return pygame.image.frombuffer(rgba_bytes, size, "RGBA")

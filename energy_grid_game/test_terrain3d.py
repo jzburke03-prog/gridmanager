@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
 
-from ui.terrain3d import MATERIALS, build_instances
+from ui.terrain3d import MATERIALS, TILE_SPACING, build_instances
 
 import os as _os
 _os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -38,7 +38,8 @@ def test_build_instances_buckets_by_material_and_skips_non_terrain_kinds():
 def test_build_instances_offset_matches_col_row():
     tiles = {(3, 5): ("grass", None)}
     instances = build_instances(tiles)
-    assert np.array_equal(instances["grass"][0], np.array([3.0, 0.0, 5.0], dtype="f4"))
+    expected = np.array([3.0 * TILE_SPACING, 0.0, -5.0 * TILE_SPACING], dtype="f4")
+    assert np.array_equal(instances["grass"][0], expected)
 
 
 def test_build_instances_groups_multiple_tiles_of_the_same_material():
