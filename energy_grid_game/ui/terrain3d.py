@@ -24,6 +24,15 @@ import numpy as np
 TW, TH = 16, 8  # MUST match ui.iso_city.TW/TH
 
 MATERIALS = ("grass", "farm", "tree", "water", "mountain")
+ROAD_MATERIALS = ("straight", "corner", "tee", "cross")
+BUILDING_MATERIALS = ("house", "shop", "block", "midrise", "tower")
+
+ROAD_ROLE_TO_SHAPE_YAW = {
+    "straight_ne": ("straight", 0.0), "straight_nw": ("straight", 90.0),
+    "corner_ne": ("corner", 0.0), "corner_nw": ("corner", 90.0),
+    "tee_ne": ("tee", 0.0), "tee_nw": ("tee", 90.0),
+    "cross": ("cross", 0.0),
+}
 
 # Baked ground meshes (energy_grid_game/assets/terrain3d/*.npz) each span
 # -1.6..+1.6 on X and Z -- a 3.2-unit footprint -- so instances must be
@@ -46,15 +55,29 @@ def build_instances(tiles):
     col and row are swapped (col feeds world Z, row feeds world -X) so the
     projected result matches ui.iso_city.iso_xy's (col - row, col + row)
     diamond axes -- see test_build_instances_matches_iso_xy_sign_convention.
+
+    Phase 2 also buckets `road` tiles (payload is a role string like
+    "straight_ne", mapped to a shape+yaw via ROAD_ROLE_TO_SHAPE_YAW) and
+    `urban_block` tiles (payload is a ui.urban_blocks.UrbanBlock whose
+    .buildings[0] is the archetype name, e.g. "house") into the
+    ROAD_MATERIALS/BUILDING_MATERIALS buckets alongside the terrain ones.
     """
-    buckets = {material: [] for material in MATERIALS}
-    for (col, row), (kind, _extra) in tiles.items():
-        if kind in buckets:
-            buckets[kind].append(
-                (-float(row) * TILE_SPACING, 0.0, float(col) * TILE_SPACING, 0.0))
+    buckets = {m: [] for m in MATERIALS + ROAD_MATERIALS + BUILDING_MATERIALS}
+    for (col, row), (kind, extra) in tiles.items():
+        x = -float(row) * TILE_SPACING
+        z = float(col) * TILE_SPACING
+        if kind in MATERIALS:
+            buckets[kind].append((x, 0.0, z, 0.0))
+        elif kind == "road" and extra in ROAD_ROLE_TO_SHAPE_YAW:
+            shape, yaw = ROAD_ROLE_TO_SHAPE_YAW[extra]
+            buckets[shape].append((x, 0.0, z, yaw))
+        elif kind == "urban_block":
+            archetype = extra.buildings[0]
+            if archetype in BUILDING_MATERIALS:
+                buckets[archetype].append((x, 0.0, z, 0.0))
     return {
-        material: np.array(offsets, dtype="f4").reshape(-1, 4)
-        for material, offsets in buckets.items()
+        m: np.array(offsets, dtype="f4").reshape(-1, 4)
+        for m, offsets in buckets.items()
         if offsets
     }
 

@@ -6,7 +6,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
 
-from ui.terrain3d import CAM_ROT, MATERIALS, TILE_SPACING, build_instances
+from ui.terrain3d import (BUILDING_MATERIALS, CAM_ROT, MATERIALS,
+                           ROAD_MATERIALS, ROAD_ROLE_TO_SHAPE_YAW,
+                           TILE_SPACING, build_instances)
 from ui.iso_city import iso_xy
 
 import os as _os
@@ -19,15 +21,15 @@ from ui.terrain3d import (create_framebuffer, create_program, draw,
                            upload_instances)
 
 
-def test_build_instances_buckets_by_material_and_skips_non_terrain_kinds():
+def test_build_instances_buckets_by_material_and_skips_unrecognized_kinds():
     tiles = {
         (0, 0): ("grass", None),
         (1, 0): ("farm", None),
         (2, 0): ("tree", None),
         (3, 0): ("water", None),
         (4, 0): ("mountain", 7),
-        (5, 0): ("road", "straight_ne"),      # 2D-sprite-rendered, skip
-        (6, 0): ("urban_block", "shop"),      # 2D-sprite-rendered, skip
+        (5, 0): ("nonsense_kind", None),  # not a terrain/road/building kind, skip
+        (6, 0): ("road", "not_a_real_role"),  # unrecognized role, skip
     }
     instances = build_instances(tiles)
     assert set(instances) == {"grass", "farm", "tree", "water", "mountain"}
@@ -74,6 +76,42 @@ def test_build_instances_matches_iso_xy_sign_convention():
         iso_x, iso_y = iso_xy(col, row)
         assert np.sign(sx) == np.sign(iso_x), (col, row, sx, iso_x)
         assert np.sign(screen_y) == np.sign(iso_y), (col, row, screen_y, iso_y)
+
+
+def test_build_instances_buckets_road_tiles_by_shape_with_correct_yaw():
+    tiles = {
+        (0, 0): ("road", "straight_ne"),
+        (1, 0): ("road", "straight_nw"),
+        (2, 0): ("road", "cross"),
+    }
+    instances = build_instances(tiles)
+    assert instances["straight"].shape == (2, 4)
+    yaws = sorted(instances["straight"][:, 3].tolist())
+    assert yaws == [0.0, 90.0]
+    assert instances["cross"].shape == (1, 4)
+    assert instances["cross"][0, 3] == 0.0
+
+
+def test_road_role_to_shape_yaw_covers_all_seven_roles():
+    assert set(ROAD_ROLE_TO_SHAPE_YAW) == {
+        "straight_ne", "straight_nw", "corner_ne", "corner_nw",
+        "tee_ne", "tee_nw", "cross"}
+    for shape, yaw in ROAD_ROLE_TO_SHAPE_YAW.values():
+        assert shape in ROAD_MATERIALS
+        assert yaw in (0.0, 90.0)
+
+
+def test_build_instances_buckets_urban_block_tiles_by_archetype():
+    # Build a real urban_block tile the same way IsoCity does, so this test
+    # breaks (loudly) if _building_tile's payload shape ever changes.
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from ui.iso_city import _building_tile
+    tile = _building_tile(0, 0, "Downtown", "house")
+    tiles = {(0, 0): ("urban_block", tile)}
+    instances = build_instances(tiles)
+    assert "house" in instances
+    assert instances["house"].shape == (1, 4)
 
 
 class _FakeCamera:
