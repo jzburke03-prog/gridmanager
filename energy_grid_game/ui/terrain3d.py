@@ -93,6 +93,10 @@ def build_instances(tiles):
     col and row are swapped (col feeds world Z, row feeds world -X) so the
     projected result matches ui.iso_city.iso_xy's (col - row, col + row)
     diamond axes -- see test_build_instances_matches_iso_xy_sign_convention.
+    Combined with CAM_ROT/PX_PER_UNIT below (tuned to the same 2:1 ratio and
+    absolute scale as iso_xy), the projected screen position is not just
+    sign-matched but proportional to iso_xy(col, row) -- see
+    test_build_instances_projection_matches_iso_xy_proportionally.
 
     Phase 2 also buckets `road` tiles (payload is a
     ui.road_network.RoadNetwork/ui.urban_blocks.UrbanRoad instance whose
@@ -140,15 +144,33 @@ import pygame
 LIGHT = np.array([-0.35, 0.8, 0.5])
 LIGHT = LIGHT / np.linalg.norm(LIGHT)
 
-# Same fixed isometric camera used throughout this project (see
-# tools/bake_gltf_terrain.py): rotate 45 deg around Y, then ~35.264 deg
-# around X, dropped to an orthographic screen. This is the same fixed
-# isometric camera used throughout this project, chosen to visually match
-# the existing iso_xy screen orientation (the col/row swap-and-negate in
-# build_instances() above is what actually aligns the two axes; this
-# camera does not by itself produce a 2:1 screen ratio).
+# Camera tuned to exactly match ui.iso_city.iso_xy's 2:1 diamond projection
+# ((col-row)*(TW//2), (col+row)*(TH//2)), NOT the true cube-diagonal
+# isometric angle used by tools/bake_gltf_terrain.py's offline sprite bake
+# (that tool bakes separate, already-shipped 2D sprite assets and is
+# intentionally left alone -- see that file's own camera setup).
+#
+# Derivation: CAM_ROT = RX(_AX) @ RY(45deg) applied to a world offset
+# (X, 0, Z) gives (after expanding the matrix product):
+#   cam.x = (X+Z) * sqrt(2)/2
+#   cam.y = -(Z-X) * sqrt(2)/2 * sin(_AX)
+# build_instances() sets X = -row*TILE_SPACING, Z = col*TILE_SPACING, so
+# X+Z = TILE_SPACING*(col-row) and Z-X = TILE_SPACING*(col+row). The vertex
+# shader computes sx = cam.x*px_per_unit*zoom and
+# screen_y = -cam.y*px_per_unit*zoom, giving:
+#   sx        = TILE_SPACING * sqrt(2)/2 * px_per_unit * (col-row)
+#   screen_y  = TILE_SPACING * sqrt(2)/2 * px_per_unit * sin(_AX) * (col+row)
+# For this to be proportional to iso_xy's ((col-row)*8, (col+row)*4) -- a
+# 2:1 ratio between the (col-row) and (col+row) coefficients -- we need
+# sin(_AX) = 1/2, i.e. _AX = 30 degrees (not the ~35.264 degree true
+# isometric angle). Matching the sx coefficient to iso_xy's absolute scale
+# (TW//2 = 8) then pins px_per_unit = TW / (sqrt(2) * TILE_SPACING) (see
+# PX_PER_UNIT below), which also makes the screen_y coefficient equal
+# TH//2 = 4 exactly. This camera therefore DOES now produce iso_xy's exact
+# 2:1 screen ratio and scale; the col/row swap-and-negate in
+# build_instances() above additionally aligns the two axes' orientation.
 _AY = np.deg2rad(45.0)
-_AX = np.deg2rad(35.264)
+_AX = np.deg2rad(30.0)
 _RY = np.array([[np.cos(_AY), 0, np.sin(_AY)],
                 [0, 1, 0],
                 [-np.sin(_AY), 0, np.cos(_AY)]])
@@ -156,6 +178,10 @@ _RX = np.array([[1, 0, 0],
                 [0, np.cos(_AX), -np.sin(_AX)],
                 [0, np.sin(_AX), np.cos(_AX)]])
 CAM_ROT = _RX @ _RY
+
+# px_per_unit that makes the camera's projected scale match iso_xy's
+# TW//2 = 8 px per (col-row) unit exactly (see derivation above).
+PX_PER_UNIT = TW / (2 ** 0.5 * TILE_SPACING)
 
 _VERTEX_SHADER = """
 #version 330
@@ -286,7 +312,7 @@ def create_framebuffer(ctx, size):
     )
 
 
-def draw(ctx, prog, meshes, fbo, camera, px_per_unit=26.0, ambient=0.55):
+def draw(ctx, prog, meshes, fbo, camera, px_per_unit=PX_PER_UNIT, ambient=0.55):
     fbo.use()
     ctx.enable(moderngl.DEPTH_TEST | moderngl.BLEND)
     ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA

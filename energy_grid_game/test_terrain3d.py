@@ -7,8 +7,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 
 from ui.terrain3d import (BUILDING_MATERIALS, CAM_ROT, MATERIALS, MESH_DIR,
-                           ROAD_MATERIALS, ROAD_ROLE_TO_SHAPE_YAW,
-                           TILE_SPACING, build_instances)
+                           PX_PER_UNIT, ROAD_MATERIALS,
+                           ROAD_ROLE_TO_SHAPE_YAW, TILE_SPACING,
+                           build_instances)
 from ui.iso_city import IsoCity, iso_xy
 from ui.urban_blocks import UrbanRoad
 
@@ -99,6 +100,50 @@ def test_build_instances_matches_iso_xy_sign_convention():
         iso_x, iso_y = iso_xy(col, row)
         assert np.sign(sx) == np.sign(iso_x), (col, row, sx, iso_x)
         assert np.sign(screen_y) == np.sign(iso_y), (col, row, screen_y, iso_y)
+
+
+def _project(offset):
+    """Project a build_instances() (x, y, z, yaw) offset through the same
+    camera math draw()/_VERTEX_SHADER apply at render time (yaw=0 here, so
+    the yaw rotation matrix is the identity and can be skipped): cam =
+    CAM_ROT @ world, sx = cam.x * PX_PER_UNIT, screen_y = -cam.y *
+    PX_PER_UNIT (zoom is a runtime multiplier applied equally to both axes,
+    so it's omitted here since only the ratio/proportionality matters)."""
+    cam = CAM_ROT @ offset[:3]
+    return cam[0] * PX_PER_UNIT, -cam[1] * PX_PER_UNIT
+
+
+def test_build_instances_projection_matches_iso_xy_proportionally():
+    """Stronger than the sign-convention test above: confirms the corrected
+    CAM_ROT (_AX = 30 degrees) and PX_PER_UNIT together make the projected
+    (sx, screen_y) genuinely PROPORTIONAL to ui.iso_city.iso_xy(col, row) --
+    not just sign-matched -- across several distinct (col, row) pairs, with
+    the same proportionality constant each time. This is what actually
+    guarantees the 3D terrain tiles line up with the 2D city grid on
+    screen."""
+    pairs = [(1, 0), (0, 1), (2, 1), (3, 5), (7, 1), (2, 6)]
+    ratios_x = []
+    ratios_y = []
+    for col, row in pairs:
+        tiles = {(col, row): ("grass", None)}
+        offset = build_instances(tiles)["grass"][0]
+        sx, screen_y = _project(offset)
+        iso_x, iso_y = iso_xy(col, row)
+        assert iso_x != 0
+        ratios_x.append(sx / iso_x)
+        if iso_y != 0:
+            ratios_y.append(screen_y / iso_y)
+    # All x-ratios agree with each other (proportionality)...
+    for r in ratios_x:
+        assert abs(r - ratios_x[0]) < 1e-4, (ratios_x, r)
+    for r in ratios_y:
+        assert abs(r - ratios_y[0]) < 1e-4, (ratios_y, r)
+    # ...and the x- and y-ratios agree with EACH OTHER too, confirming the
+    # 2:1 ratio itself (not just two independently-scaled axes).
+    assert abs(ratios_x[0] - ratios_y[0]) < 1e-4, (ratios_x[0], ratios_y[0])
+    # Sanity: the shared constant should be close to 1.0 (exact scale match
+    # to iso_xy, not just proportional up to some arbitrary factor).
+    assert abs(ratios_x[0] - 1.0) < 1e-3, ratios_x[0]
 
 
 def _road_tile(col, row, role):
