@@ -350,6 +350,14 @@ def main():
             if city.layout_key != terrain3d_key:
                 terrain3d.upload_instances(gl_ctx, terrain3d_meshes,
                                             terrain3d.build_instances(city.tiles))
+                # Release the OLD billboard meshes' GL resources before
+                # replacing the list -- GLMesh holds a VBO/IBO/instance
+                # VBO/VAO/texture per plant, and layout_key can change many
+                # times per second during a window resize (same pattern as
+                # the FBO release a few lines below), so skipping this leaks
+                # N GL resource sets per change.
+                for old_mesh in terrain3d_plant_meshes:
+                    old_mesh.release()
                 terrain3d_plant_meshes = terrain3d.load_billboards(
                     gl_ctx, terrain3d_prog, terrain3d.build_plant_billboards(city.plants))
                 terrain3d_key = city.layout_key

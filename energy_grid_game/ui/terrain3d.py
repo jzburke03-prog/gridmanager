@@ -395,6 +395,19 @@ class GLMesh:
             self.texture.use(0)
             self.vao.render(instances=self.instance_count)
 
+    def release(self):
+        """Release this mesh's GL resources (buffers, VAO, texture). Needed
+        by callers (e.g. main.py's per-layout-change billboard rebuild) that
+        replace a list of GLMesh instances with a new one -- without this,
+        every rebuild leaks a VBO/IBO/instance VBO/VAO/texture set per mesh,
+        matching the same "release old before creating new" discipline
+        main.py already applies to its terrain3d FBO's attachments."""
+        self.vbo.release()
+        self.ibo.release()
+        self.instance_vbo.release()
+        self.vao.release()
+        self.texture.release()
+
 
 def load_meshes(ctx, prog, mesh_dir=MESH_DIR):
     meshes = {}

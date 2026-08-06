@@ -419,37 +419,96 @@ def test_build_plant_billboards_handles_multiple_plants():
     assert len(build_plant_billboards(plants)) == 2
 
 
+def _count_red_pixels(ctx, prog, tower_offset_xyz, camera):
+    """Render a 'tower' building instance at `tower_offset_xyz` together
+    with a solid-red billboard fixed at the world origin, and return how
+    many rendered pixels read back as "red" (the billboard's shaded fill).
+
+    Under this file's banded lighting (LIGHT vs. the billboard's fixed
+    facing_normal from camera_basis()), a pure (255,0,0,255) fill renders at
+    R ~= 178.5 (lambert ~= 0.597, banded to the 1/3 band, bright = 0.55 +
+    0.45*(1/3) = 0.70, 255*0.70 = 178.5) -- NOT the R > 200 an earlier
+    version of this test checked for, which could never fire since nothing
+    in this scene renders above that value. R > 150 sits safely below the
+    actual rendered value with margin, while staying well above the (25,
+    28, 33) background clear color and other meshes' shading."""
+    meshes = load_meshes(ctx, prog)
+    upload_instances(
+        ctx, meshes,
+        {"tower": np.array([[*tower_offset_xyz, 0.0]], dtype="f4")},
+    )
+    red_surface = pygame.Surface((32, 64), pygame.SRCALPHA)
+    red_surface.fill((255, 0, 0, 255))
+    billboards = [{"key": "test", "offset": (0.0, 0.0, 0.0),
+                   "width_world": 2.0, "height_world": 2.0, "surface": red_surface}]
+    billboard_meshes = load_billboards(ctx, prog, billboards)
+    fbo = create_framebuffer(ctx, (128, 128))
+    draw(ctx, prog, meshes, fbo, camera, billboard_meshes=billboard_meshes)
+    rgba, size = read_rgba(fbo)
+    pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
+    is_red = (pixels[:, :, 0] > 150) & (pixels[:, :, 1] < 60) & (pixels[:, :, 2] < 60)
+    for mesh in meshes.values():
+        mesh.release()
+    for mesh in billboard_meshes:
+        mesh.release()
+    fbo.color_attachments[0].release()
+    fbo.depth_attachment.release()
+    fbo.release()
+    return int(is_red.sum())
+
+
 def test_billboard_is_occluded_by_a_nearer_building_instance():
-    """Synthetic proof of the core Phase 3a claim: a billboard placed
-    BEHIND a building (from the fixed camera's view) is hidden by it,
-    because both share the same depth buffer. Uses a real 'tower' building
-    mesh and a synthetic solid-color billboard surface so the two are
-    visually distinguishable in the readback."""
+    """Synthetic proof of the core Phase 3a claim: a billboard is hidden by
+    a building instance that is nearer to the camera, because both share
+    the same depth buffer.
+
+    The billboard stays fixed at the world origin. The tower instance is
+    slid along CAM_ROT[2] -- the camera's own view-direction axis in world
+    space (row index 2 of CAM_ROT, i.e. the direction cam_rot @ world maps
+    onto cam.z) -- by a scalar `t`. Moving an object along this axis keeps
+    its projected screen position (sx, sy) pixel-identical (since only
+    cam.z, which feeds `depth`, changes -- sx/sy come from cam.x/cam.y) while
+    changing how near/far it is from the camera. This is deliberately NOT
+    the tower-at-origin/billboard-offset-(0,0,5) setup an earlier version of
+    this test used: numeric analysis showed those two objects never share a
+    screen pixel at all under this camera (disjoint sx ranges), so that
+    setup could not have exercised depth testing regardless of any
+    threshold fix. Camera center is offset to (-64,-64) (fbo is 128x128) so
+    the world origin -- where both objects sit at t=0 -- projects to the
+    center of the frame rather than to a screen corner, where an earlier
+    version of this test's camera setup left it invisible/clipped.
+
+    t < 0 moves the tower AWAY from the camera along that axis (behind the
+    billboard); t > 0 moves it TOWARD the camera (in front of, i.e. nearer
+    than, the billboard). Two assertions:
+      1. Positive control: with the tower behind the billboard (t=-6), the
+         billboard's red pixels are fully visible (proving this setup CAN
+         detect the billboard at all when nothing occludes it -- a test
+         that can't pass this can't meaningfully test occlusion either).
+      2. The actual claim: with the tower in front of the billboard (t=+6),
+         the red pixel count drops substantially, since the tower's nearer
+         fragments win the depth test over the same screen pixels.
+    Empirically (see this test's development notes) t=-6 renders 48 red
+    pixels (full billboard silhouette) and t=+6 renders 16 (only the
+    fringe peeking around the tower's narrower footprint) -- a large,
+    unambiguous drop, not a borderline threshold."""
     ctx = create_context()
     try:
         prog = create_program(ctx)
-        meshes = load_meshes(ctx, prog)
-        upload_instances(ctx, meshes, {"tower": np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4")})
+        camera = _FakeCamera(center=(-64.0, -64.0), zoom=1.0)
+        axis = CAM_ROT[2]
 
-        red_surface = pygame.Surface((32, 64), pygame.SRCALPHA)
-        red_surface.fill((255, 0, 0, 255))
-        # Placed at the SAME (x,z) as the tower instance but further from
-        # the camera along the tower's depth axis, so the tower's nearer
-        # fragments must win the depth test at any overlapping pixel.
-        billboards = [{"key": "test", "offset": (0.0, 0.0, 5.0),
-                       "width_world": 2.0, "height_world": 2.0, "surface": red_surface}]
-        billboard_meshes = load_billboards(ctx, prog, billboards)
+        behind_count = _count_red_pixels(ctx, prog, tuple(-6.0 * axis), camera)
+        assert behind_count >= 30, (
+            "positive control failed: billboard should be fully visible "
+            f"with nothing in front of it, got {behind_count} red pixels"
+        )
 
-        camera = _FakeCamera(center=(0.0, 0.0), zoom=1.0)
-        fbo = create_framebuffer(ctx, (128, 128))
-        draw(ctx, prog, meshes, fbo, camera, billboard_meshes=billboard_meshes)
-        rgba, size = read_rgba(fbo)
-        pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
-        # No pure-red pixel should be visible anywhere -- if the billboard
-        # were drawn without depth testing (or after, ignoring depth), its
-        # solid red fill would show through/around the tower.
-        is_red = (pixels[:, :, 0] > 200) & (pixels[:, :, 1] < 60) & (pixels[:, :, 2] < 60)
-        assert not is_red.any()
+        front_count = _count_red_pixels(ctx, prog, tuple(6.0 * axis), camera)
+        assert front_count < behind_count / 2, (
+            "tower in front of the billboard should occlude most of it: "
+            f"behind={behind_count} front={front_count}"
+        )
     finally:
         ctx.release()
 
