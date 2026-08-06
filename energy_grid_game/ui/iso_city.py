@@ -2716,6 +2716,11 @@ class IsoCity:
         cache on this."""
         return self._key
 
+    @property
+    def plants(self):
+        """Read-only view of the current plant placements: list[PlantSite]."""
+        return self._plants
+
     def prepare(self, rect, state):
         """Ensure camera, world layers, and plant markers exist for this frame.
 

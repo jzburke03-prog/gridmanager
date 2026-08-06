@@ -1120,6 +1120,19 @@ def test_tiles_and_layout_key_are_publicly_readable():
     assert city.layout_key is not None
 
 
+def test_plants_is_publicly_readable():
+    viewport = pygame.Rect(0, 0, 1400, 700)
+    gas = SimpleNamespace(
+        key="gas", max_output_mw=750.0, ramp_up_latency=3, ramp_down_latency=3)
+    solar = SimpleNamespace(
+        key="solar", max_output_mw=100.0, ramp_up_latency=1, ramp_down_latency=1)
+    state = SimpleNamespace(population=200_000, sources=[gas, solar])
+    city = IsoCity(None)
+    city.prepare(viewport, state)
+    assert city.plants is city._plants
+    assert len(city.plants) >= 1
+
+
 def test_freeplay_city_size_is_decoupled_from_grid_megawatts():
     class State:
         population = None
