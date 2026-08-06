@@ -23,6 +23,7 @@ from ui.terrain3d import (create_framebuffer, create_program, draw,
                            load_meshes, read_rgba, to_surface,
                            upload_instances)
 from ui.terrain3d import billboard_quad, camera_basis, create_dynamic_texture
+from ui.terrain3d import build_plant_billboards
 
 
 def test_build_instances_buckets_by_material_and_skips_unrecognized_kinds():
@@ -383,6 +384,38 @@ def test_create_dynamic_texture_matches_surface_size():
         assert tex.size == (17, 23)
     finally:
         ctx.release()
+
+
+class _FakePlantSite:
+    def __init__(self, key, col, row, w, h):
+        self.key = key
+        self.col, self.row = col, row
+        self.sprite = pygame.Surface((w, h), pygame.SRCALPHA)
+
+
+def test_build_plant_billboards_converts_col_row_and_sprite_size():
+    plants = [_FakePlantSite("gas", 3, -5, 32, 64)]
+    billboards = build_plant_billboards(plants)
+    assert len(billboards) == 1
+    b = billboards[0]
+    assert b["key"] == "gas"
+    assert np.allclose(b["offset"], (5.0 * TILE_SPACING, 0.0, 3.0 * TILE_SPACING))
+    assert np.isclose(b["width_world"], 32 / PX_PER_UNIT)
+    # height is corrected for camera vertical foreshortening (see
+    # billboard_quad's docstring note): dividing by PX_PER_UNIT alone would
+    # render the billboard ~13% too short relative to its width, since
+    # up_world isn't perpendicular to the camera view direction the way
+    # right_world is. Dividing by PX_PER_UNIT * cos(30deg) instead makes the
+    # on-screen height match the sprite's pixel aspect ratio.
+    assert np.isclose(
+        b["height_world"], 64 / (PX_PER_UNIT * np.cos(np.deg2rad(30.0)))
+    )
+    assert b["surface"] is plants[0].sprite
+
+
+def test_build_plant_billboards_handles_multiple_plants():
+    plants = [_FakePlantSite("gas", 0, 0, 10, 10), _FakePlantSite("solar", 5, 5, 20, 20)]
+    assert len(build_plant_billboards(plants)) == 2
 
 
 if __name__ == "__main__":

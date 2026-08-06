@@ -254,6 +254,40 @@ def billboard_quad(width_world, height_world, basis=None):
     return pos, nrm, uv, idx
 
 
+# Correction factor for build_plant_billboards()'s height conversion -- see
+# billboard_quad()'s docstring note above: up_world is pinned to
+# world-vertical rather than being perpendicular to the camera's view
+# direction, so a billboard's vertical extent renders on-screen at only
+# cos(30deg) of what its horizontal extent would at the same world-unit
+# size. Dividing the height conversion by this factor (in addition to
+# PX_PER_UNIT) cancels that foreshortening so the billboard's on-screen
+# aspect ratio matches the source sprite's pixel aspect ratio, same as its
+# width does.
+_VERTICAL_FORESHORTENING = np.cos(np.deg2rad(30.0))
+
+
+def build_plant_billboards(plants):
+    """Pure PlantSite-list -> billboard placement data. No GL calls. Uses
+    the same (-row*TILE_SPACING, 0, col*TILE_SPACING) world convention as
+    build_instances(), NOT the clamped 2D sx/sy IsoCity uses for its own
+    on-screen anchor (see Phase 3a design doc's scope note).
+
+    height_world divides by PX_PER_UNIT * _VERTICAL_FORESHORTENING (not
+    just PX_PER_UNIT, unlike width_world) to counteract the camera's
+    vertical foreshortening described above."""
+    billboards = []
+    for site in plants:
+        w, h = site.sprite.get_size()
+        billboards.append({
+            "key": site.key,
+            "offset": (-float(site.row) * TILE_SPACING, 0.0, float(site.col) * TILE_SPACING),
+            "width_world": w / PX_PER_UNIT,
+            "height_world": h / (PX_PER_UNIT * _VERTICAL_FORESHORTENING),
+            "surface": site.sprite,
+        })
+    return billboards
+
+
 def create_dynamic_texture(ctx, surface):
     """Runtime GL texture from a pygame Surface (plant sprites are drawn
     procedurally at bake time, not baked offline like terrain/road/building
