@@ -192,6 +192,12 @@ def camera_basis():
     banded-lighting shader allows, keeping the plant sprite's original
     colors close to their 2D appearance).
 
+    facing_normal points toward the camera, which lands in the shared
+    banded-lighting shader's middle band (~70% brightness) rather than full
+    brightness -- billboarded plants will read visibly darker than their 2D
+    counterparts until Phase 3b addresses this (e.g. an unlit/full-bright
+    shader path for billboards).
+
     up_world is pinned to world-vertical (0, 1, 0) -- billboards stand
     upright, matching the existing 2D sprites' "flat cutout standing on the
     ground" convention -- rather than the camera's true local "up" axis.
@@ -263,7 +269,7 @@ def billboard_quad(width_world, height_world, basis=None):
 # PX_PER_UNIT) cancels that foreshortening so the billboard's on-screen
 # aspect ratio matches the source sprite's pixel aspect ratio, same as its
 # width does.
-_VERTICAL_FORESHORTENING = np.cos(np.deg2rad(30.0))
+_VERTICAL_FORESHORTENING = np.cos(_AX)
 
 
 def build_plant_billboards(plants):
@@ -288,13 +294,22 @@ def build_plant_billboards(plants):
     return billboards
 
 
+def _surface_to_rgba_array(surface):
+    """Shared pygame-Surface -> (h, w, 4) uint8 RGBA array conversion, used
+    by both create_dynamic_texture() (which wraps it in a moderngl.Texture)
+    and load_billboards() (which needs the raw array for GLMesh.__init__)."""
+    w, h = surface.get_size()
+    data = pygame.image.tostring(surface.convert_alpha(), "RGBA", False)
+    return np.frombuffer(data, dtype="u1").reshape(h, w, 4)
+
+
 def create_dynamic_texture(ctx, surface):
     """Runtime GL texture from a pygame Surface (plant sprites are drawn
     procedurally at bake time, not baked offline like terrain/road/building
     meshes -- there is no .npz for these)."""
-    w, h = surface.get_size()
-    data = pygame.image.tostring(surface.convert_alpha(), "RGBA", False)
-    tex = ctx.texture((w, h), 4, data)
+    array = _surface_to_rgba_array(surface)
+    h, w = array.shape[0], array.shape[1]
+    tex = ctx.texture((w, h), 4, array.tobytes())
     tex.filter = moderngl.NEAREST, moderngl.NEAREST
     return tex
 
@@ -436,11 +451,7 @@ def load_billboards(ctx, prog, billboards):
     meshes = []
     for b in billboards:
         pos, nrm, uv, idx = billboard_quad(b["width_world"], b["height_world"])
-        tex_surface = b["surface"]
-        w, h = tex_surface.get_size()
-        tex_data = np.frombuffer(
-            pygame.image.tostring(tex_surface.convert_alpha(), "RGBA", False), dtype="u1"
-        ).reshape(h, w, 4)
+        tex_data = _surface_to_rgba_array(b["surface"])
         mesh = GLMesh(ctx, prog, pos, nrm, uv, idx, tex_data)
         mesh.set_instances(np.array([[*b["offset"], 0.0]], dtype="f4"))
         meshes.append(mesh)

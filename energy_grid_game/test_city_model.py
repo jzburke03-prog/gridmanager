@@ -1421,8 +1421,16 @@ def test_daylight():
 
 
 if __name__ == "__main__":
+    failures = []
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
-            fn()
-            print(f"ok  {name}")
+            try:
+                fn()
+                print(f"ok  {name}")
+            except Exception as exc:
+                print(f"FAIL {name}: {exc}")
+                failures.append(name)
+    if failures:
+        print(f"\n{len(failures)} test(s) failed: {', '.join(failures)}")
+        sys.exit(1)
     print("\nall city model checks passed")

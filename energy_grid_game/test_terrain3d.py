@@ -9,7 +9,7 @@ import numpy as np
 from ui.terrain3d import (BUILDING_MATERIALS, CAM_ROT, MATERIALS, MESH_DIR,
                            PX_PER_UNIT, ROAD_MATERIALS,
                            ROAD_ROLE_TO_SHAPE_YAW, TILE_SPACING,
-                           build_instances)
+                           _VERTICAL_FORESHORTENING, build_instances)
 from ui.iso_city import IsoCity, iso_xy
 from ui.urban_blocks import UrbanRoad
 
@@ -406,10 +406,11 @@ def test_build_plant_billboards_converts_col_row_and_sprite_size():
     # billboard_quad's docstring note): dividing by PX_PER_UNIT alone would
     # render the billboard ~13% too short relative to its width, since
     # up_world isn't perpendicular to the camera view direction the way
-    # right_world is. Dividing by PX_PER_UNIT * cos(30deg) instead makes the
-    # on-screen height match the sprite's pixel aspect ratio.
+    # right_world is. Dividing by PX_PER_UNIT * _VERTICAL_FORESHORTENING
+    # instead makes the on-screen height match the sprite's pixel aspect
+    # ratio.
     assert np.isclose(
-        b["height_world"], 64 / (PX_PER_UNIT * np.cos(np.deg2rad(30.0)))
+        b["height_world"], 64 / (PX_PER_UNIT * _VERTICAL_FORESHORTENING)
     )
     assert b["surface"] is plants[0].sprite
 
@@ -417,6 +418,29 @@ def test_build_plant_billboards_converts_col_row_and_sprite_size():
 def test_build_plant_billboards_handles_multiple_plants():
     plants = [_FakePlantSite("gas", 0, 0, 10, 10), _FakePlantSite("solar", 5, 5, 20, 20)]
     assert len(build_plant_billboards(plants)) == 2
+
+
+def test_build_plant_billboards_from_a_real_city_layout():
+    """Integration check mirroring
+    test_build_instances_produces_road_instances_from_a_real_city_layout:
+    a real IsoCity layout's PlantSite objects (with PlantSite.sprite set by
+    _layout(), per Finding 2) must actually produce usable billboard data."""
+    from types import SimpleNamespace
+
+    viewport = pygame.Rect(0, 0, 1400, 700)
+    gas = SimpleNamespace(
+        key="gas", max_output_mw=750.0, ramp_up_latency=3, ramp_down_latency=3)
+    solar = SimpleNamespace(
+        key="solar", max_output_mw=100.0, ramp_up_latency=1, ramp_down_latency=1)
+    state = SimpleNamespace(population=200_000, sources=[gas, solar])
+    city = IsoCity(None)
+    city.prepare(viewport, state)
+    billboards = build_plant_billboards(city.plants)
+    assert len(billboards) >= 1
+    for b in billboards:
+        assert b["surface"] is not None
+        assert b["width_world"] > 0
+        assert b["height_world"] > 0
 
 
 def _count_red_pixels(ctx, prog, tower_offset_xyz, camera):

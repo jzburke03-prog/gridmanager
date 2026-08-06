@@ -975,6 +975,8 @@ class PlantSite:
         self.phase = phase
         self.blade_angle = 0.0
         self.switchyard_offset = None
+        self.sprite = None
+        self.sprite_offset = None
 
     def switchyard_anchor(self):
         """Decorative line takeoff; intentionally carries no simulation state."""
