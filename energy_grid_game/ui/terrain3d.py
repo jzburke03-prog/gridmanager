@@ -206,7 +206,7 @@ def camera_basis():
     horizontal axis perpendicular to both world-up and the camera's raw
     view direction (a cross product with world-up is always perpendicular
     to world-up by construction), then re-derive facing_normal as
-    cross(up_world, right_world) so all three vectors end up mutually
+    cross(right_world, up_world) so all three vectors end up mutually
     orthogonal by construction rather than merely close.  The resulting
     facing_normal is the raw camera direction's horizontal projection --
     it points toward the camera's side of the scene with no vertical
@@ -217,7 +217,12 @@ def camera_basis():
     raw_facing = inv @ np.array([0.0, 0.0, -1.0])
     right_world = np.cross(raw_facing, up_world)
     right_world = right_world / np.linalg.norm(right_world)
-    facing_normal = np.cross(up_world, right_world)
+    # cross(right_world, up_world) (not up x right) so facing_normal points
+    # back toward the camera rather than into the scene -- verified
+    # numerically: with CAM_ROT's fixed _AY=45/_AX=30, this yields
+    # (-0.7071, 0, 0.7071), matching the horizontal projection of
+    # CAM_ROT.T @ (0,0,1) (the true toward-camera direction).
+    facing_normal = np.cross(right_world, up_world)
     facing_normal = facing_normal / np.linalg.norm(facing_normal)
     return right_world, up_world, facing_normal
 
@@ -225,8 +230,18 @@ def camera_basis():
 def billboard_quad(width_world, height_world, basis=None):
     """A single camera-facing quad: bottom edge at local y=0 (ground), top
     edge at y=height_world, centered on x=0. `basis` overrides
-    camera_basis() for testing; production callers use the default."""
-    right_world, up_world, facing_normal = basis or camera_basis()
+    camera_basis() for testing; production callers use the default.
+
+    NOTE for whoever adds sprite-pixel-height -> world-unit conversion
+    (e.g. a future build_plant_billboards()): unlike right_world, up_world
+    is pinned to world-vertical rather than being perpendicular to the
+    camera's view direction, so vertical extents get foreshortened by
+    cos(_AX) = cos(30deg) ~= 0.866 on screen under this camera's pitch. A
+    caller that wants a specific on-screen pixel height should divide the
+    world-unit height by that factor before passing it in here."""
+    right_world, up_world, facing_normal = (
+        basis if basis is not None else camera_basis()
+    )
     half_w = width_world / 2.0
     bottom_left = -half_w * right_world
     bottom_right = half_w * right_world

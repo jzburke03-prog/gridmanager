@@ -355,6 +355,11 @@ def test_camera_basis_vectors_are_orthonormal():
     # up should be world-vertical: billboards stand upright, matching the
     # existing 2D sprites' "flat cutout standing on the ground" convention.
     assert np.allclose(up, np.array([0.0, 1.0, 0.0]), atol=1e-6)
+    # facing must point back TOWARD the camera, not into the scene: for the
+    # fixed CAM_ROT (_AY=45deg, _AX=30deg) that horizontal direction is
+    # (-0.7071, 0, 0.7071), the negation of the away-from-camera direction a
+    # sign flip would produce. Orthonormality alone can't catch a sign bug.
+    assert np.allclose(facing, np.array([-0.70710678, 0.0, 0.70710678]), atol=1e-6)
 
 
 def test_billboard_quad_has_four_verts_and_two_triangles():
