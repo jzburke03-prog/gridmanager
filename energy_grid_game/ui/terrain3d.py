@@ -187,12 +187,7 @@ PX_PER_UNIT = TW / (2 ** 0.5 * TILE_SPACING)
 def camera_basis():
     """World-space basis for a camera-facing billboard, derived once from
     the fixed CAM_ROT. right_world/up_world span the billboard's plane;
-    facing_normal points back toward the camera (used so a billboard's
-    fragment lighting reads as close to fully lit/undistorted as the shared
-    banded-lighting shader allows, keeping the plant sprite's original
-    colors close to their 2D appearance).
-
-    facing_normal points toward the camera, which lands in the shared
+    facing_normal points back toward the camera, which lands in the shared
     banded-lighting shader's middle band (~70% brightness) rather than full
     brightness -- billboarded plants will read visibly darker than their 2D
     counterparts until Phase 3b addresses this (e.g. an unlit/full-bright
