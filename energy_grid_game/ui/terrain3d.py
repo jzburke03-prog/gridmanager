@@ -183,6 +183,72 @@ CAM_ROT = _RX @ _RY
 # TW//2 = 8 px per (col-row) unit exactly (see derivation above).
 PX_PER_UNIT = TW / (2 ** 0.5 * TILE_SPACING)
 
+
+def camera_basis():
+    """World-space basis for a camera-facing billboard, derived once from
+    the fixed CAM_ROT. right_world/up_world span the billboard's plane;
+    facing_normal points back toward the camera (used so a billboard's
+    fragment lighting reads as close to fully lit/undistorted as the shared
+    banded-lighting shader allows, keeping the plant sprite's original
+    colors close to their 2D appearance).
+
+    up_world is pinned to world-vertical (0, 1, 0) -- billboards stand
+    upright, matching the existing 2D sprites' "flat cutout standing on the
+    ground" convention -- rather than the camera's true local "up" axis.
+    CAM_ROT tilts the camera down by 30 degrees (see the CAM_ROT derivation
+    comment above), so the camera's raw local up/forward directions are NOT
+    orthogonal to world-vertical: transforming camera-space (0,0,-1)
+    straight into world space via CAM_ROT.T (valid since CAM_ROT is
+    orthonormal, so its inverse is its transpose) gives a vector with
+    dot(up_world, that) == -sin(30deg) == -0.5, nowhere near the 0 an
+    orthonormal basis requires. So this uses the standard cylindrical/
+    vertical-billboard construction instead: derive right_world as the
+    horizontal axis perpendicular to both world-up and the camera's raw
+    view direction (a cross product with world-up is always perpendicular
+    to world-up by construction), then re-derive facing_normal as
+    cross(up_world, right_world) so all three vectors end up mutually
+    orthogonal by construction rather than merely close.  The resulting
+    facing_normal is the raw camera direction's horizontal projection --
+    it points toward the camera's side of the scene with no vertical
+    component, which is the correct "faces the camera" direction for a
+    billboard whose up edge must stay world-vertical."""
+    inv = CAM_ROT.T
+    up_world = np.array([0.0, 1.0, 0.0])
+    raw_facing = inv @ np.array([0.0, 0.0, -1.0])
+    right_world = np.cross(raw_facing, up_world)
+    right_world = right_world / np.linalg.norm(right_world)
+    facing_normal = np.cross(up_world, right_world)
+    facing_normal = facing_normal / np.linalg.norm(facing_normal)
+    return right_world, up_world, facing_normal
+
+
+def billboard_quad(width_world, height_world, basis=None):
+    """A single camera-facing quad: bottom edge at local y=0 (ground), top
+    edge at y=height_world, centered on x=0. `basis` overrides
+    camera_basis() for testing; production callers use the default."""
+    right_world, up_world, facing_normal = basis or camera_basis()
+    half_w = width_world / 2.0
+    bottom_left = -half_w * right_world
+    bottom_right = half_w * right_world
+    top_left = bottom_left + height_world * up_world
+    top_right = bottom_right + height_world * up_world
+    pos = np.array([bottom_left, bottom_right, top_right, top_left], dtype="f4")
+    nrm = np.tile(facing_normal.astype("f4"), (4, 1))
+    uv = np.array([[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype="f4")
+    idx = np.array([[0, 1, 2], [0, 2, 3]], dtype="i4")
+    return pos, nrm, uv, idx
+
+
+def create_dynamic_texture(ctx, surface):
+    """Runtime GL texture from a pygame Surface (plant sprites are drawn
+    procedurally at bake time, not baked offline like terrain/road/building
+    meshes -- there is no .npz for these)."""
+    w, h = surface.get_size()
+    data = pygame.image.tostring(surface.convert_alpha(), "RGBA", False)
+    tex = ctx.texture((w, h), 4, data)
+    tex.filter = moderngl.NEAREST, moderngl.NEAREST
+    return tex
+
 _VERTEX_SHADER = """
 #version 330
 uniform mat3 cam_rot;

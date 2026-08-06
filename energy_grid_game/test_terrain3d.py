@@ -22,6 +22,7 @@ from ui.gl_context import create_context
 from ui.terrain3d import (create_framebuffer, create_program, draw,
                            load_meshes, read_rgba, to_surface,
                            upload_instances)
+from ui.terrain3d import billboard_quad, camera_basis, create_dynamic_texture
 
 
 def test_build_instances_buckets_by_material_and_skips_unrecognized_kinds():
@@ -340,6 +341,41 @@ def test_instance_yaw_actually_rotates_the_rendered_mesh():
         rgba_b, _ = read_rgba(fbo_b)
 
         assert rgba_a != rgba_b
+    finally:
+        ctx.release()
+
+
+def test_camera_basis_vectors_are_orthonormal():
+    right, up, facing = camera_basis()
+    for v in (right, up, facing):
+        assert abs(np.linalg.norm(v) - 1.0) < 1e-6
+    assert abs(np.dot(right, up)) < 1e-6
+    assert abs(np.dot(right, facing)) < 1e-6
+    assert abs(np.dot(up, facing)) < 1e-6
+    # up should be world-vertical: billboards stand upright, matching the
+    # existing 2D sprites' "flat cutout standing on the ground" convention.
+    assert np.allclose(up, np.array([0.0, 1.0, 0.0]), atol=1e-6)
+
+
+def test_billboard_quad_has_four_verts_and_two_triangles():
+    pos, nrm, uv, idx = billboard_quad(2.0, 3.0)
+    assert pos.shape == (4, 3)
+    assert nrm.shape == (4, 3)
+    assert uv.shape == (4, 2)
+    assert idx.shape == (2, 3)
+    # bottom edge at y=0, top edge at y=height, centered on x=0 in the
+    # camera-facing basis (before the per-instance world offset is added)
+    assert np.isclose(pos[:, 1].min(), 0.0)
+    assert np.isclose(pos[:, 1].max(), 3.0)
+
+
+def test_create_dynamic_texture_matches_surface_size():
+    ctx = create_context()
+    try:
+        surf = pygame.Surface((17, 23), pygame.SRCALPHA)
+        surf.fill((255, 0, 0, 255))
+        tex = create_dynamic_texture(ctx, surf)
+        assert tex.size == (17, 23)
     finally:
         ctx.release()
 
