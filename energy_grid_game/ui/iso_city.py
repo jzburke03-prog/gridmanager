@@ -68,6 +68,7 @@ from ui.urban_render import (draw_municipal_civic, draw_urban_block,
 from ui import voxel_terrain as vt
 from ui import voxel_assets as va
 from ui import voxel_city as vc
+from ui import terrain3d
 
 # Solar/wind ramp_up_latency represents throttle response, not a real
 # generation-ramp characteristic -- excluded from the ramp-speed mapping the
@@ -2265,7 +2266,7 @@ class IsoCity:
         # baked image on every single grid cell instead and produced a
         # repeating hex-hatch "wallpaper" look; sparse+oversized+jittered
         # patches read as organic ground instead.
-        if season != "winter":
+        if season != "winter" and not terrain3d.is_enabled():
             wash_rng = random.Random(777)
             countryside = [(c, r) for (c, r), (k, _) in self._tiles.items()
                            if k in ("grass", "farm")]
@@ -2300,6 +2301,8 @@ class IsoCity:
 
         for (col, row) in sorted(self._tiles, key=lambda t: t[0] + t[1]):
             kind, extra = self._tiles[(col, row)]
+            if terrain3d.is_enabled() and kind in ("grass", "farm", "tree", "water", "mountain", "road"):
+                continue
             sx, sy = iso_xy(col, row)
             sx += ox
             sy += oy

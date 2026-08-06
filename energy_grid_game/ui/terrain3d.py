@@ -17,9 +17,18 @@ back a frame late (double-buffered FBOs) or avoiding the CPU round-trip
 entirely by compositing on the GPU instead of blitting into a pygame
 Surface.
 """
+import os
 from pathlib import Path
 
 import numpy as np
+
+
+def is_enabled():
+    """Whether the opt-in 3D terrain pipeline is active. Shared by main.py
+    (decides whether to create a GL context at all) and ui.iso_city (decides
+    whether to skip drawing 2D tiles that now have a 3D equivalent)."""
+    return os.environ.get("GRIDMANAGER_TERRAIN3D", "").strip().lower() in ("1", "true", "yes")
+
 
 TW, TH = 16, 8  # MUST match ui.iso_city.TW/TH
 

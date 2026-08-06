@@ -28,7 +28,7 @@ BG_COLOR = (13, 17, 23)
 # opt-in and OFF by default -- normal players pay none of its GPU/CPU cost
 # and don't need a working OpenGL driver until that later phase lands.
 def _terrain3d_enabled():
-    return os.environ.get("GRIDMANAGER_TERRAIN3D", "").strip().lower() in ("1", "true", "yes")
+    return terrain3d.is_enabled()
 
 
 TERRAIN3D_ENABLED = _terrain3d_enabled()
