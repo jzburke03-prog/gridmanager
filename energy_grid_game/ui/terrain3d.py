@@ -413,6 +413,27 @@ def load_meshes(ctx, prog, mesh_dir=MESH_DIR):
     return meshes
 
 
+def load_billboards(ctx, prog, billboards):
+    """One GLMesh per plant billboard, each with its own single-quad
+    geometry (sized/facing per its `width_world`/`height_world` via
+    billboard_quad()) and its own runtime texture (from its `surface`), each
+    carrying exactly one instance at the plant's world offset with yaw=0.0
+    (billboards are camera-facing by construction, not by per-instance
+    rotation)."""
+    meshes = []
+    for b in billboards:
+        pos, nrm, uv, idx = billboard_quad(b["width_world"], b["height_world"])
+        tex_surface = b["surface"]
+        w, h = tex_surface.get_size()
+        tex_data = np.frombuffer(
+            pygame.image.tostring(tex_surface.convert_alpha(), "RGBA", False), dtype="u1"
+        ).reshape(h, w, 4)
+        mesh = GLMesh(ctx, prog, pos, nrm, uv, idx, tex_data)
+        mesh.set_instances(np.array([[*b["offset"], 0.0]], dtype="f4"))
+        meshes.append(mesh)
+    return meshes
+
+
 def upload_instances(ctx, meshes, instances):
     empty = np.zeros((0, 4), dtype="f4")
     for material, mesh in meshes.items():
@@ -427,7 +448,14 @@ def create_framebuffer(ctx, size):
     )
 
 
-def draw(ctx, prog, meshes, fbo, camera, px_per_unit=PX_PER_UNIT, ambient=0.55):
+def draw(ctx, prog, meshes, fbo, camera, px_per_unit=PX_PER_UNIT, ambient=0.55,
+         billboard_meshes=None):
+    """Draws the material meshes, then any billboard_meshes (e.g. from
+    load_billboards()) in the SAME pass -- same fbo, same depth state, no
+    ctx.clear() between the two groups -- so billboards are properly
+    depth-tested against the terrain/road/building geometry rather than
+    composited on top of it. `billboard_meshes` defaults to None so existing
+    callers that don't pass it behave exactly as before."""
     fbo.use()
     ctx.enable(moderngl.DEPTH_TEST | moderngl.BLEND)
     ctx.blend_func = moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA
@@ -441,6 +469,8 @@ def draw(ctx, prog, meshes, fbo, camera, px_per_unit=PX_PER_UNIT, ambient=0.55):
     prog["light_dir"].value = tuple(LIGHT.astype("f4"))
     prog["ambient"].value = float(ambient)
     for mesh in meshes.values():
+        mesh.render()
+    for mesh in (billboard_meshes or []):
         mesh.render()
 
 

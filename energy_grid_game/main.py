@@ -108,6 +108,7 @@ def main():
     gl_ctx = terrain3d_prog = terrain3d_meshes = None
     terrain3d_key = None
     terrain3d_fbo = None
+    terrain3d_plant_meshes = []
     if TERRAIN3D_ENABLED:
         try:
             gl_ctx = gl_context.create_context()
@@ -349,6 +350,8 @@ def main():
             if city.layout_key != terrain3d_key:
                 terrain3d.upload_instances(gl_ctx, terrain3d_meshes,
                                             terrain3d.build_instances(city.tiles))
+                terrain3d_plant_meshes = terrain3d.load_billboards(
+                    gl_ctx, terrain3d_prog, terrain3d.build_plant_billboards(city.plants))
                 terrain3d_key = city.layout_key
             if terrain3d_fbo is None or terrain3d_fbo.size != city_rect.size:
                 if terrain3d_fbo is not None:
@@ -359,7 +362,8 @@ def main():
                     terrain3d_fbo.depth_attachment.release()
                     terrain3d_fbo.release()
                 terrain3d_fbo = terrain3d.create_framebuffer(gl_ctx, city_rect.size)
-            terrain3d.draw(gl_ctx, terrain3d_prog, terrain3d_meshes, terrain3d_fbo, city.camera)
+            terrain3d.draw(gl_ctx, terrain3d_prog, terrain3d_meshes, terrain3d_fbo, city.camera,
+                            billboard_meshes=terrain3d_plant_meshes)
             rgba, size = terrain3d.read_rgba(terrain3d_fbo)
             # Rendered here (right after city.prepare, off the pygame surface) but
             # blitted onto `frame` later, right before city.draw -- clear_frame(frame)

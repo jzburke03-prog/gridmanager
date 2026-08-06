@@ -24,6 +24,7 @@ from ui.terrain3d import (create_framebuffer, create_program, draw,
                            upload_instances)
 from ui.terrain3d import billboard_quad, camera_basis, create_dynamic_texture
 from ui.terrain3d import build_plant_billboards
+from ui.terrain3d import load_billboards
 
 
 def test_build_instances_buckets_by_material_and_skips_unrecognized_kinds():
@@ -416,6 +417,41 @@ def test_build_plant_billboards_converts_col_row_and_sprite_size():
 def test_build_plant_billboards_handles_multiple_plants():
     plants = [_FakePlantSite("gas", 0, 0, 10, 10), _FakePlantSite("solar", 5, 5, 20, 20)]
     assert len(build_plant_billboards(plants)) == 2
+
+
+def test_billboard_is_occluded_by_a_nearer_building_instance():
+    """Synthetic proof of the core Phase 3a claim: a billboard placed
+    BEHIND a building (from the fixed camera's view) is hidden by it,
+    because both share the same depth buffer. Uses a real 'tower' building
+    mesh and a synthetic solid-color billboard surface so the two are
+    visually distinguishable in the readback."""
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog)
+        upload_instances(ctx, meshes, {"tower": np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4")})
+
+        red_surface = pygame.Surface((32, 64), pygame.SRCALPHA)
+        red_surface.fill((255, 0, 0, 255))
+        # Placed at the SAME (x,z) as the tower instance but further from
+        # the camera along the tower's depth axis, so the tower's nearer
+        # fragments must win the depth test at any overlapping pixel.
+        billboards = [{"key": "test", "offset": (0.0, 0.0, 5.0),
+                       "width_world": 2.0, "height_world": 2.0, "surface": red_surface}]
+        billboard_meshes = load_billboards(ctx, prog, billboards)
+
+        camera = _FakeCamera(center=(0.0, 0.0), zoom=1.0)
+        fbo = create_framebuffer(ctx, (128, 128))
+        draw(ctx, prog, meshes, fbo, camera, billboard_meshes=billboard_meshes)
+        rgba, size = read_rgba(fbo)
+        pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
+        # No pure-red pixel should be visible anywhere -- if the billboard
+        # were drawn without depth testing (or after, ignoring depth), its
+        # solid red fill would show through/around the tower.
+        is_red = (pixels[:, :, 0] > 200) & (pixels[:, :, 1] < 60) & (pixels[:, :, 2] < 60)
+        assert not is_red.any()
+    finally:
+        ctx.release()
 
 
 if __name__ == "__main__":
