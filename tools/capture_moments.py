@@ -22,8 +22,15 @@ import random
 import sys
 from pathlib import Path
 
+
+def _env_truthy(name):
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+if _env_truthy("CAPTURE_TERRAIN3D"):
+    os.environ["GRIDMANAGER_TERRAIN3D"] = "1"
 if os.environ.get("PYTHONHASHSEED") != "0":
     os.environ["PYTHONHASHSEED"] = "0"
     os.execv(sys.executable, [sys.executable, *sys.argv])
@@ -33,7 +40,8 @@ sys.path.insert(0, str(REPO / "energy_grid_game"))
 
 import pygame  # noqa: E402
 
-W, H = 1400, 900
+W = int(os.environ.get("CAPTURE_W", "1400"))
+H = int(os.environ.get("CAPTURE_H", "900"))
 
 
 def _fonts():
@@ -46,6 +54,87 @@ def _fonts():
         "font_mono_big": pygame.font.Font(p, 40),
         "font_title": pygame.font.Font(p, 64),
     }
+
+
+def _release_terrain3d_fbo(fbo):
+    if fbo is None:
+        return
+    fbo.color_attachments[0].release()
+    fbo.depth_attachment.release()
+    fbo.release()
+
+
+def _init_terrain3d_capture():
+    from ui import gl_context, terrain3d
+
+    if not terrain3d.is_enabled():
+        return None
+    try:
+        ctx = gl_context.create_context()
+    except gl_context.UnsupportedGLError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+    prog = terrain3d.create_program(ctx)
+    return {
+        "ctx": ctx,
+        "prog": prog,
+        "meshes": terrain3d.load_meshes(ctx, prog),
+        "layout_key": None,
+        "fbo": None,
+        "plant_meshes": [],
+        "transmission_meshes": None,
+        "terrain3d": terrain3d,
+        "released": False,
+    }
+
+
+def _release_terrain3d_capture(bundle):
+    if not bundle:
+        return
+    if bundle.get("released"):
+        return
+    bundle["released"] = True
+    terrain3d = bundle["terrain3d"]
+    for mesh in bundle.get("plant_meshes", []):
+        mesh.release()
+    terrain3d.release_transmission(bundle.get("transmission_meshes"))
+    _release_terrain3d_fbo(bundle.get("fbo"))
+    for mesh in bundle.get("meshes", {}).values():
+        mesh.release()
+    bundle["ctx"].release()
+    bundle["plant_meshes"] = []
+    bundle["transmission_meshes"] = None
+    bundle["fbo"] = None
+
+
+def _render_terrain3d_capture(bundle, city, city_rect, state):
+    if bundle is None:
+        return None
+    terrain3d = bundle["terrain3d"]
+    ctx = bundle["ctx"]
+    prog = bundle["prog"]
+    meshes = bundle["meshes"]
+    if city.layout_key != bundle["layout_key"]:
+        terrain3d.upload_instances(ctx, meshes, terrain3d.build_instances(city.tiles))
+        for old_mesh in bundle["plant_meshes"]:
+            old_mesh.release()
+        bundle["plant_meshes"] = terrain3d.load_billboards(
+            ctx, prog, terrain3d.build_plant_billboards(city.plants))
+        terrain3d.release_transmission(bundle["transmission_meshes"])
+        bundle["transmission_meshes"] = terrain3d.load_transmission(
+            ctx, prog,
+            terrain3d.build_transmission_geometry(city.transmission3d, city._origin))
+        bundle["layout_key"] = city.layout_key
+    if bundle["fbo"] is None or bundle["fbo"].size != city_rect.size:
+        _release_terrain3d_fbo(bundle["fbo"])
+        bundle["fbo"] = terrain3d.create_framebuffer(ctx, city_rect.size)
+    terrain3d.draw(ctx, prog, meshes, bundle["fbo"], city.camera,
+                   billboard_meshes=bundle["plant_meshes"],
+                   transmission_meshes=bundle["transmission_meshes"],
+                   world_origin=city._origin,
+                   **terrain3d.lighting_for_state(state))
+    rgba, size = terrain3d.read_rgba(bundle["fbo"])
+    return terrain3d.to_surface(rgba, size)
 
 
 def _build():
@@ -86,6 +175,7 @@ def _build():
         "day_panel": DayCompletePanel(f["font"], f["font_small"], f["font_big"]),
         "menu": MenuSystem(f["font"], f["font_small"], f["font_big"], f["font_title"]),
         "audio": AudioManager(),
+        "terrain3d": _init_terrain3d_capture(),
     }
     w.update(f)
     return w
@@ -114,12 +204,15 @@ def render_game(frame, st, w):
     from ui.atmosphere import sample_atmosphere
     environment = sample_atmosphere(
         st.sim_hour, st.active_event.kind if st.active_event else None)
+    w["city"].prepare(city_rect, st)
+    terrain3d_surface = _render_terrain3d_capture(
+        w.get("terrain3d"), w["city"], city_rect, st)
+    if terrain3d_surface is not None:
+        frame.blit(terrain3d_surface, city_rect.topleft)
     w["city"].draw(frame, city_rect, st, environment)
     w["atmosphere"].draw(frame, city_rect, environment, 1 / 60.0)
     w["demand_chart"].draw(frame, st.sim_hour, st.sources, st.history, st.demand_mw,
                            st.demand_min_mw, st.demand_peak_mw)
-    w["city"].draw_homes_label(frame, w["readout_rect"], st.homes_without_power,
-                               st.homes_total)
     pin_obstacles = (w["chart_rect"], w["readout_rect"], w["hud_panels"]["outer"])
     w["plant_pins"].draw(frame, st.active_sources, w["city"].plant_markers(city_rect),
                          pin_obstacles, city_rect,
@@ -136,7 +229,15 @@ def capture(out_dir):
     pygame.init()
     pygame.display.set_mode((W, H))
     frame = pygame.Surface((W, H), depth=24)
-    w = _build()
+    w_holder = {"current": _build()}
+    try:
+        _capture_sequence(out_dir, frame, w_holder)
+    finally:
+        _release_terrain3d_capture(w_holder["current"].get("terrain3d"))
+
+
+def _capture_sequence(out_dir, frame, w_holder):
+    w = w_holder["current"]
     from ui.menu import TITLE, MODE, FREEPLAY, SCENARIOS, FETCHING
     from ui.day_panel import DayPhase
     import game_state
@@ -166,7 +267,9 @@ def capture(out_dir):
 
     def fresh_game(sim_hour, zoom):
         nonlocal w
+        _release_terrain3d_capture(w.get("terrain3d"))
         w = _build()
+        w_holder["current"] = w
         st = _new_state(w, sim_hour=sim_hour)
         st.sim_hour = sim_hour
         w["city"].prepare(w["city_rect"], st)

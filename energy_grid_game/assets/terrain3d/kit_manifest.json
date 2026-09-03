@@ -1,0 +1,2245 @@
+{
+  "source_root": "newassets/terrain/gltf",
+  "artifact_root": "energy_grid_game/assets/terrain3d/kit",
+  "count": 373,
+  "assets": [
+    {
+      "key": "asphalt/asphalt-edgy-connection",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-edgy-connection.gltf",
+      "artifact": "Asphalt/asphalt-edgy-connection.npz"
+    },
+    {
+      "key": "asphalt/asphalt-edgy-edge-inner",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-edgy-edge-inner.gltf",
+      "artifact": "Asphalt/asphalt-edgy-edge-inner.npz"
+    },
+    {
+      "key": "asphalt/asphalt-edgy-edge-outer",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-edgy-edge-outer.gltf",
+      "artifact": "Asphalt/asphalt-edgy-edge-outer.npz"
+    },
+    {
+      "key": "asphalt/asphalt-plane",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-plane.gltf",
+      "artifact": "Asphalt/asphalt-plane.npz"
+    },
+    {
+      "key": "asphalt/asphalt-rounded-connection",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-rounded-connection.gltf",
+      "artifact": "Asphalt/asphalt-rounded-connection.npz"
+    },
+    {
+      "key": "asphalt/asphalt-rounded-edge-inner",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-rounded-edge-inner.gltf",
+      "artifact": "Asphalt/asphalt-rounded-edge-inner.npz"
+    },
+    {
+      "key": "asphalt/asphalt-rounded-edge-outer",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-rounded-edge-outer.gltf",
+      "artifact": "Asphalt/asphalt-rounded-edge-outer.npz"
+    },
+    {
+      "key": "asphalt/asphalt-rounded-expand-1",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-rounded-expand-1.gltf",
+      "artifact": "Asphalt/asphalt-rounded-expand-1.npz"
+    },
+    {
+      "key": "asphalt/asphalt-rounded-expand-2",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-rounded-expand-2.gltf",
+      "artifact": "Asphalt/asphalt-rounded-expand-2.npz"
+    },
+    {
+      "key": "asphalt/asphalt-rounded-large-inner",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-rounded-large-inner.gltf",
+      "artifact": "Asphalt/asphalt-rounded-large-inner.npz"
+    },
+    {
+      "key": "asphalt/asphalt-rounded-large-outer",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-rounded-large-outer.gltf",
+      "artifact": "Asphalt/asphalt-rounded-large-outer.npz"
+    },
+    {
+      "key": "asphalt/asphalt-side",
+      "family": "Asphalt",
+      "source": "Asphalt/asphalt-side.gltf",
+      "artifact": "Asphalt/asphalt-side.npz"
+    },
+    {
+      "key": "bones/bones-1",
+      "family": "Bones",
+      "source": "Bones/bones-1.gltf",
+      "artifact": "Bones/bones-1.npz"
+    },
+    {
+      "key": "bones/bones-2",
+      "family": "Bones",
+      "source": "Bones/bones-2.gltf",
+      "artifact": "Bones/bones-2.npz"
+    },
+    {
+      "key": "bones/bones-3",
+      "family": "Bones",
+      "source": "Bones/bones-3.gltf",
+      "artifact": "Bones/bones-3.npz"
+    },
+    {
+      "key": "bones/bones-4",
+      "family": "Bones",
+      "source": "Bones/bones-4.gltf",
+      "artifact": "Bones/bones-4.npz"
+    },
+    {
+      "key": "buildings/city-building",
+      "family": "Buildings",
+      "source": "Buildings/city-building.gltf",
+      "artifact": "Buildings/city-building.npz"
+    },
+    {
+      "key": "bushes/bush-1",
+      "family": "Bushes",
+      "source": "Bushes/bush-1.gltf",
+      "artifact": "Bushes/bush-1.npz"
+    },
+    {
+      "key": "bushes/bush-2",
+      "family": "Bushes",
+      "source": "Bushes/bush-2.gltf",
+      "artifact": "Bushes/bush-2.npz"
+    },
+    {
+      "key": "bushes/bush-3",
+      "family": "Bushes",
+      "source": "Bushes/bush-3.gltf",
+      "artifact": "Bushes/bush-3.npz"
+    },
+    {
+      "key": "cactus/cactus-1",
+      "family": "Cactus",
+      "source": "Cactus/cactus-1.gltf",
+      "artifact": "Cactus/cactus-1.npz"
+    },
+    {
+      "key": "cactus/cactus-2",
+      "family": "Cactus",
+      "source": "Cactus/cactus-2.gltf",
+      "artifact": "Cactus/cactus-2.npz"
+    },
+    {
+      "key": "cactus/cactus-3",
+      "family": "Cactus",
+      "source": "Cactus/cactus-3.gltf",
+      "artifact": "Cactus/cactus-3.npz"
+    },
+    {
+      "key": "city/city-1",
+      "family": "City",
+      "source": "City/city-1.gltf",
+      "artifact": "City/city-1.npz"
+    },
+    {
+      "key": "city/city-uneven-edge-inner-1",
+      "family": "City",
+      "source": "City/city-uneven-edge-inner-1.gltf",
+      "artifact": "City/city-uneven-edge-inner-1.npz"
+    },
+    {
+      "key": "city/city-uneven-edge-outer-1",
+      "family": "City",
+      "source": "City/city-uneven-edge-outer-1.gltf",
+      "artifact": "City/city-uneven-edge-outer-1.npz"
+    },
+    {
+      "key": "city/city-uneven-side-1",
+      "family": "City",
+      "source": "City/city-uneven-side-1.gltf",
+      "artifact": "City/city-uneven-side-1.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-inner-1",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-inner-1.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-inner-2",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-inner-2.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-inner-3",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-inner-3.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-inner-4",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-inner-4.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-outer-1",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-outer-1.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-outer-2",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-outer-2.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-outer-3",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-outer-3.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "citywater/city-water-edgy-edge-outer-4",
+      "family": "CityWater",
+      "source": "CityWater/city-water-edgy-edge-outer-4.gltf",
+      "artifact": "CityWater/city-water-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-inner-1",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-inner-1.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-inner-2",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-inner-2.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-inner-3",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-inner-3.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-inner-4",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-inner-4.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-outer-1",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-outer-1.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-outer-2",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-outer-2.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-outer-3",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-outer-3.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "citywater/city-water-rounded-edge-outer-4",
+      "family": "CityWater",
+      "source": "CityWater/city-water-rounded-edge-outer-4.gltf",
+      "artifact": "CityWater/city-water-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "citywater/city-water-side-1",
+      "family": "CityWater",
+      "source": "CityWater/city-water-side-1.gltf",
+      "artifact": "CityWater/city-water-side-1.npz"
+    },
+    {
+      "key": "citywater/city-water-side-2",
+      "family": "CityWater",
+      "source": "CityWater/city-water-side-2.gltf",
+      "artifact": "CityWater/city-water-side-2.npz"
+    },
+    {
+      "key": "citywater/city-water-side-3",
+      "family": "CityWater",
+      "source": "CityWater/city-water-side-3.gltf",
+      "artifact": "CityWater/city-water-side-3.npz"
+    },
+    {
+      "key": "citywater/city-water-side-4",
+      "family": "CityWater",
+      "source": "CityWater/city-water-side-4.gltf",
+      "artifact": "CityWater/city-water-side-4.npz"
+    },
+    {
+      "key": "desert/desert-1",
+      "family": "Desert",
+      "source": "Desert/desert-1.gltf",
+      "artifact": "Desert/desert-1.npz"
+    },
+    {
+      "key": "desert/desert-2",
+      "family": "Desert",
+      "source": "Desert/desert-2.gltf",
+      "artifact": "Desert/desert-2.npz"
+    },
+    {
+      "key": "desert/desert-3",
+      "family": "Desert",
+      "source": "Desert/desert-3.gltf",
+      "artifact": "Desert/desert-3.npz"
+    },
+    {
+      "key": "desert/desert-4",
+      "family": "Desert",
+      "source": "Desert/desert-4.gltf",
+      "artifact": "Desert/desert-4.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-inner-1",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-inner-1.gltf",
+      "artifact": "Desert/desert-uneven-edge-inner-1.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-inner-2",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-inner-2.gltf",
+      "artifact": "Desert/desert-uneven-edge-inner-2.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-inner-3",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-inner-3.gltf",
+      "artifact": "Desert/desert-uneven-edge-inner-3.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-inner-4",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-inner-4.gltf",
+      "artifact": "Desert/desert-uneven-edge-inner-4.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-outer-1",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-outer-1.gltf",
+      "artifact": "Desert/desert-uneven-edge-outer-1.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-outer-2",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-outer-2.gltf",
+      "artifact": "Desert/desert-uneven-edge-outer-2.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-outer-3",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-outer-3.gltf",
+      "artifact": "Desert/desert-uneven-edge-outer-3.npz"
+    },
+    {
+      "key": "desert/desert-uneven-edge-outer-4",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-edge-outer-4.gltf",
+      "artifact": "Desert/desert-uneven-edge-outer-4.npz"
+    },
+    {
+      "key": "desert/desert-uneven-side-1",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-side-1.gltf",
+      "artifact": "Desert/desert-uneven-side-1.npz"
+    },
+    {
+      "key": "desert/desert-uneven-side-2",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-side-2.gltf",
+      "artifact": "Desert/desert-uneven-side-2.npz"
+    },
+    {
+      "key": "desert/desert-uneven-side-3",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-side-3.gltf",
+      "artifact": "Desert/desert-uneven-side-3.npz"
+    },
+    {
+      "key": "desert/desert-uneven-side-4",
+      "family": "Desert",
+      "source": "Desert/desert-uneven-side-4.gltf",
+      "artifact": "Desert/desert-uneven-side-4.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-inner-1",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-inner-1.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-inner-2",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-inner-2.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-inner-3",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-inner-3.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-inner-4",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-inner-4.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-outer-1",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-outer-1.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-outer-2",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-outer-2.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-outer-3",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-outer-3.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "desertcity/desert-city-edgy-edge-outer-4",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-edgy-edge-outer-4.gltf",
+      "artifact": "DesertCity/desert-city-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-inner-1",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-inner-1.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-inner-2",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-inner-2.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-inner-3",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-inner-3.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-inner-4",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-inner-4.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-outer-1",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-outer-1.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-outer-2",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-outer-2.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-outer-3",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-outer-3.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "desertcity/desert-city-rounded-edge-outer-4",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-rounded-edge-outer-4.gltf",
+      "artifact": "DesertCity/desert-city-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "desertcity/desert-city-side-1",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-side-1.gltf",
+      "artifact": "DesertCity/desert-city-side-1.npz"
+    },
+    {
+      "key": "desertcity/desert-city-side-2",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-side-2.gltf",
+      "artifact": "DesertCity/desert-city-side-2.npz"
+    },
+    {
+      "key": "desertcity/desert-city-side-3",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-side-3.gltf",
+      "artifact": "DesertCity/desert-city-side-3.npz"
+    },
+    {
+      "key": "desertcity/desert-city-side-4",
+      "family": "DesertCity",
+      "source": "DesertCity/desert-city-side-4.gltf",
+      "artifact": "DesertCity/desert-city-side-4.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-inner-1",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-inner-1.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-inner-2",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-inner-2.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-inner-3",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-inner-3.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-inner-4",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-inner-4.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-outer-1",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-outer-1.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-outer-2",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-outer-2.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-outer-3",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-outer-3.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "desertwater/desert-water-edgy-edge-outer-4",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-edgy-edge-outer-4.gltf",
+      "artifact": "DesertWater/desert-water-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-inner-1",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-inner-1.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-inner-2",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-inner-2.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-inner-3",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-inner-3.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-inner-4",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-inner-4.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-outer-1",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-outer-1.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-outer-2",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-outer-2.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-outer-3",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-outer-3.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "desertwater/desert-water-rounded-edge-outer-4",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-rounded-edge-outer-4.gltf",
+      "artifact": "DesertWater/desert-water-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "desertwater/desert-water-side-1",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-side-1.gltf",
+      "artifact": "DesertWater/desert-water-side-1.npz"
+    },
+    {
+      "key": "desertwater/desert-water-side-2",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-side-2.gltf",
+      "artifact": "DesertWater/desert-water-side-2.npz"
+    },
+    {
+      "key": "desertwater/desert-water-side-3",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-side-3.gltf",
+      "artifact": "DesertWater/desert-water-side-3.npz"
+    },
+    {
+      "key": "desertwater/desert-water-side-4",
+      "family": "DesertWater",
+      "source": "DesertWater/desert-water-side-4.gltf",
+      "artifact": "DesertWater/desert-water-side-4.npz"
+    },
+    {
+      "key": "dirt/dirt-1",
+      "family": "Dirt",
+      "source": "Dirt/dirt-1.gltf",
+      "artifact": "Dirt/dirt-1.npz"
+    },
+    {
+      "key": "dirt/dirt-2",
+      "family": "Dirt",
+      "source": "Dirt/dirt-2.gltf",
+      "artifact": "Dirt/dirt-2.npz"
+    },
+    {
+      "key": "dirt/dirt-3",
+      "family": "Dirt",
+      "source": "Dirt/dirt-3.gltf",
+      "artifact": "Dirt/dirt-3.npz"
+    },
+    {
+      "key": "dirt/dirt-4",
+      "family": "Dirt",
+      "source": "Dirt/dirt-4.gltf",
+      "artifact": "Dirt/dirt-4.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-inner-1",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-inner-1.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-inner-1.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-inner-2",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-inner-2.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-inner-2.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-inner-3",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-inner-3.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-inner-3.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-inner-4",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-inner-4.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-inner-4.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-outer-1",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-outer-1.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-outer-1.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-outer-2",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-outer-2.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-outer-2.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-outer-3",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-outer-3.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-outer-3.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-edge-outer-4",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-edge-outer-4.gltf",
+      "artifact": "Dirt/dirt-uneven-edge-outer-4.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-side-1",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-side-1.gltf",
+      "artifact": "Dirt/dirt-uneven-side-1.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-side-2",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-side-2.gltf",
+      "artifact": "Dirt/dirt-uneven-side-2.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-side-3",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-side-3.gltf",
+      "artifact": "Dirt/dirt-uneven-side-3.npz"
+    },
+    {
+      "key": "dirt/dirt-uneven-side-4",
+      "family": "Dirt",
+      "source": "Dirt/dirt-uneven-side-4.gltf",
+      "artifact": "Dirt/dirt-uneven-side-4.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-inner-1",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-inner-1.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-inner-2",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-inner-2.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-inner-3",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-inner-3.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-inner-4",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-inner-4.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-outer-1",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-outer-1.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-outer-2",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-outer-2.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-outer-3",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-outer-3.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-edgy-edge-outer-4",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-edgy-edge-outer-4.gltf",
+      "artifact": "DirtCity/dirt-city-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-inner-1",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-inner-1.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-inner-2",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-inner-2.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-inner-3",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-inner-3.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-inner-4",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-inner-4.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-outer-1",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-outer-1.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-outer-2",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-outer-2.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-outer-3",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-outer-3.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-rounded-edge-outer-4",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-rounded-edge-outer-4.gltf",
+      "artifact": "DirtCity/dirt-city-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-side-1",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-side-1.gltf",
+      "artifact": "DirtCity/dirt-city-side-1.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-side-2",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-side-2.gltf",
+      "artifact": "DirtCity/dirt-city-side-2.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-side-3",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-side-3.gltf",
+      "artifact": "DirtCity/dirt-city-side-3.npz"
+    },
+    {
+      "key": "dirtcity/dirt-city-side-4",
+      "family": "DirtCity",
+      "source": "DirtCity/dirt-city-side-4.gltf",
+      "artifact": "DirtCity/dirt-city-side-4.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-inner-1",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-inner-1.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-inner-2",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-inner-2.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-inner-3",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-inner-3.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-inner-4",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-inner-4.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-outer-1",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-outer-1.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-outer-2",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-outer-2.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-outer-3",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-outer-3.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-edgy-edge-outer-4",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-edgy-edge-outer-4.gltf",
+      "artifact": "DirtDesert/dirt-desert-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-inner-1",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-inner-1.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-inner-2",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-inner-2.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-inner-3",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-inner-3.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-inner-4",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-inner-4.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-outer-1",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-outer-1.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-outer-2",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-outer-2.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-outer-3",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-outer-3.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-rounded-edge-outer-4",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-rounded-edge-outer-4.gltf",
+      "artifact": "DirtDesert/dirt-desert-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-side-1",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-side-1.gltf",
+      "artifact": "DirtDesert/dirt-desert-side-1.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-side-2",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-side-2.gltf",
+      "artifact": "DirtDesert/dirt-desert-side-2.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-side-3",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-side-3.gltf",
+      "artifact": "DirtDesert/dirt-desert-side-3.npz"
+    },
+    {
+      "key": "dirtdesert/dirt-desert-side-4",
+      "family": "DirtDesert",
+      "source": "DirtDesert/dirt-desert-side-4.gltf",
+      "artifact": "DirtDesert/dirt-desert-side-4.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-inner-1",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-inner-1.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-inner-2",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-inner-2.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-inner-3",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-inner-3.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-inner-4",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-inner-4.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-outer-1",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-outer-1.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-outer-2",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-outer-2.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-outer-3",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-outer-3.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-edgy-edge-outer-4",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-edgy-edge-outer-4.gltf",
+      "artifact": "DirtWater/dirt-water-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-inner-1",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-inner-1.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-inner-2",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-inner-2.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-inner-3",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-inner-3.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-inner-4",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-inner-4.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-outer-1",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-outer-1.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-outer-2",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-outer-2.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-outer-3",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-outer-3.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-rounded-edge-outer-4",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-rounded-edge-outer-4.gltf",
+      "artifact": "DirtWater/dirt-water-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-side-1",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-side-1.gltf",
+      "artifact": "DirtWater/dirt-water-side-1.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-side-2",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-side-2.gltf",
+      "artifact": "DirtWater/dirt-water-side-2.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-side-3",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-side-3.gltf",
+      "artifact": "DirtWater/dirt-water-side-3.npz"
+    },
+    {
+      "key": "dirtwater/dirt-water-side-4",
+      "family": "DirtWater",
+      "source": "DirtWater/dirt-water-side-4.gltf",
+      "artifact": "DirtWater/dirt-water-side-4.npz"
+    },
+    {
+      "key": "forest/forest-1",
+      "family": "Forest",
+      "source": "Forest/forest-1.gltf",
+      "artifact": "Forest/forest-1.npz"
+    },
+    {
+      "key": "forest/forest-2",
+      "family": "Forest",
+      "source": "Forest/forest-2.gltf",
+      "artifact": "Forest/forest-2.npz"
+    },
+    {
+      "key": "forest/forest-3",
+      "family": "Forest",
+      "source": "Forest/forest-3.gltf",
+      "artifact": "Forest/forest-3.npz"
+    },
+    {
+      "key": "forest/forest-4",
+      "family": "Forest",
+      "source": "Forest/forest-4.gltf",
+      "artifact": "Forest/forest-4.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-inner-1",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-inner-1.gltf",
+      "artifact": "Forest/forest-uneven-edge-inner-1.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-inner-2",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-inner-2.gltf",
+      "artifact": "Forest/forest-uneven-edge-inner-2.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-inner-3",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-inner-3.gltf",
+      "artifact": "Forest/forest-uneven-edge-inner-3.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-inner-4",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-inner-4.gltf",
+      "artifact": "Forest/forest-uneven-edge-inner-4.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-outer-1",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-outer-1.gltf",
+      "artifact": "Forest/forest-uneven-edge-outer-1.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-outer-2",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-outer-2.gltf",
+      "artifact": "Forest/forest-uneven-edge-outer-2.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-outer-3",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-outer-3.gltf",
+      "artifact": "Forest/forest-uneven-edge-outer-3.npz"
+    },
+    {
+      "key": "forest/forest-uneven-edge-outer-4",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-edge-outer-4.gltf",
+      "artifact": "Forest/forest-uneven-edge-outer-4.npz"
+    },
+    {
+      "key": "forest/forest-uneven-side-1",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-side-1.gltf",
+      "artifact": "Forest/forest-uneven-side-1.npz"
+    },
+    {
+      "key": "forest/forest-uneven-side-2",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-side-2.gltf",
+      "artifact": "Forest/forest-uneven-side-2.npz"
+    },
+    {
+      "key": "forest/forest-uneven-side-3",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-side-3.gltf",
+      "artifact": "Forest/forest-uneven-side-3.npz"
+    },
+    {
+      "key": "forest/forest-uneven-side-4",
+      "family": "Forest",
+      "source": "Forest/forest-uneven-side-4.gltf",
+      "artifact": "Forest/forest-uneven-side-4.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-inner-1",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-inner-1.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-inner-2",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-inner-2.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-inner-3",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-inner-3.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-inner-4",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-inner-4.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-outer-1",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-outer-1.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-outer-2",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-outer-2.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-outer-3",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-outer-3.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "forestcity/forest-city-edgy-edge-outer-4",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-edgy-edge-outer-4.gltf",
+      "artifact": "ForestCity/forest-city-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-inner-1",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-inner-1.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-inner-2",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-inner-2.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-inner-3",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-inner-3.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-inner-4",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-inner-4.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-outer-1",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-outer-1.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-outer-2",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-outer-2.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-outer-3",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-outer-3.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "forestcity/forest-city-rounded-edge-outer-4",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-rounded-edge-outer-4.gltf",
+      "artifact": "ForestCity/forest-city-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "forestcity/forest-city-side-1",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-side-1.gltf",
+      "artifact": "ForestCity/forest-city-side-1.npz"
+    },
+    {
+      "key": "forestcity/forest-city-side-2",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-side-2.gltf",
+      "artifact": "ForestCity/forest-city-side-2.npz"
+    },
+    {
+      "key": "forestcity/forest-city-side-3",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-side-3.gltf",
+      "artifact": "ForestCity/forest-city-side-3.npz"
+    },
+    {
+      "key": "forestcity/forest-city-side-4",
+      "family": "ForestCity",
+      "source": "ForestCity/forest-city-side-4.gltf",
+      "artifact": "ForestCity/forest-city-side-4.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-inner-1",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-inner-1.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-inner-2",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-inner-2.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-inner-3",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-inner-3.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-inner-4",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-inner-4.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-outer-1",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-outer-1.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-outer-2",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-outer-2.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-outer-3",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-outer-3.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-edgy-edge-outer-4",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-edgy-edge-outer-4.gltf",
+      "artifact": "ForestDesert/forest-desert-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-inner-1",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-inner-1.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-inner-2",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-inner-2.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-inner-3",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-inner-3.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-inner-4",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-inner-4.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-outer-1",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-outer-1.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-outer-2",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-outer-2.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-outer-3",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-outer-3.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-rounded-edge-outer-4",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-rounded-edge-outer-4.gltf",
+      "artifact": "ForestDesert/forest-desert-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-side-1",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-side-1.gltf",
+      "artifact": "ForestDesert/forest-desert-side-1.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-side-2",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-side-2.gltf",
+      "artifact": "ForestDesert/forest-desert-side-2.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-side-3",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-side-3.gltf",
+      "artifact": "ForestDesert/forest-desert-side-3.npz"
+    },
+    {
+      "key": "forestdesert/forest-desert-side-4",
+      "family": "ForestDesert",
+      "source": "ForestDesert/forest-desert-side-4.gltf",
+      "artifact": "ForestDesert/forest-desert-side-4.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-inner-1",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-inner-1.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-inner-2",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-inner-2.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-inner-3",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-inner-3.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-inner-4",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-inner-4.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-outer-1",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-outer-1.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-outer-2",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-outer-2.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-outer-3",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-outer-3.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-edgy-edge-outer-4",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-edgy-edge-outer-4.gltf",
+      "artifact": "ForestDirt/forest-dirt-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-inner-1",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-inner-1.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-inner-2",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-inner-2.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-inner-3",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-inner-3.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-inner-4",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-inner-4.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-outer-1",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-outer-1.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-outer-2",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-outer-2.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-outer-3",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-outer-3.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-rounded-edge-outer-4",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-rounded-edge-outer-4.gltf",
+      "artifact": "ForestDirt/forest-dirt-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-side-1",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-side-1.gltf",
+      "artifact": "ForestDirt/forest-dirt-side-1.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-side-2",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-side-2.gltf",
+      "artifact": "ForestDirt/forest-dirt-side-2.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-side-3",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-side-3.gltf",
+      "artifact": "ForestDirt/forest-dirt-side-3.npz"
+    },
+    {
+      "key": "forestdirt/forest-dirt-side-4",
+      "family": "ForestDirt",
+      "source": "ForestDirt/forest-dirt-side-4.gltf",
+      "artifact": "ForestDirt/forest-dirt-side-4.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-inner-1",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-inner-1.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-inner-1.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-inner-2",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-inner-2.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-inner-2.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-inner-3",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-inner-3.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-inner-3.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-inner-4",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-inner-4.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-inner-4.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-outer-1",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-outer-1.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-outer-1.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-outer-2",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-outer-2.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-outer-2.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-outer-3",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-outer-3.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-outer-3.npz"
+    },
+    {
+      "key": "forestwater/forest-water-edgy-edge-outer-4",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-edgy-edge-outer-4.gltf",
+      "artifact": "ForestWater/forest-water-edgy-edge-outer-4.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-inner-1",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-inner-1.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-inner-1.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-inner-2",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-inner-2.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-inner-2.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-inner-3",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-inner-3.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-inner-3.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-inner-4",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-inner-4.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-inner-4.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-outer-1",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-outer-1.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-outer-1.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-outer-2",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-outer-2.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-outer-2.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-outer-3",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-outer-3.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-outer-3.npz"
+    },
+    {
+      "key": "forestwater/forest-water-rounded-edge-outer-4",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-rounded-edge-outer-4.gltf",
+      "artifact": "ForestWater/forest-water-rounded-edge-outer-4.npz"
+    },
+    {
+      "key": "forestwater/forest-water-side-1",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-side-1.gltf",
+      "artifact": "ForestWater/forest-water-side-1.npz"
+    },
+    {
+      "key": "forestwater/forest-water-side-2",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-side-2.gltf",
+      "artifact": "ForestWater/forest-water-side-2.npz"
+    },
+    {
+      "key": "forestwater/forest-water-side-3",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-side-3.gltf",
+      "artifact": "ForestWater/forest-water-side-3.npz"
+    },
+    {
+      "key": "forestwater/forest-water-side-4",
+      "family": "ForestWater",
+      "source": "ForestWater/forest-water-side-4.gltf",
+      "artifact": "ForestWater/forest-water-side-4.npz"
+    },
+    {
+      "key": "mountains/mountain-1",
+      "family": "Mountains",
+      "source": "Mountains/mountain-1.gltf",
+      "artifact": "Mountains/mountain-1.npz"
+    },
+    {
+      "key": "mountains/mountain-cave",
+      "family": "Mountains",
+      "source": "Mountains/mountain-cave.gltf",
+      "artifact": "Mountains/mountain-cave.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-inner-1",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-inner-1.gltf",
+      "artifact": "Mountains/mountain-edge-inner-1.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-inner-2",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-inner-2.gltf",
+      "artifact": "Mountains/mountain-edge-inner-2.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-inner-3",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-inner-3.gltf",
+      "artifact": "Mountains/mountain-edge-inner-3.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-inner-4",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-inner-4.gltf",
+      "artifact": "Mountains/mountain-edge-inner-4.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-outer-1",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-outer-1.gltf",
+      "artifact": "Mountains/mountain-edge-outer-1.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-outer-2",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-outer-2.gltf",
+      "artifact": "Mountains/mountain-edge-outer-2.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-outer-3",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-outer-3.gltf",
+      "artifact": "Mountains/mountain-edge-outer-3.npz"
+    },
+    {
+      "key": "mountains/mountain-edge-outer-4",
+      "family": "Mountains",
+      "source": "Mountains/mountain-edge-outer-4.gltf",
+      "artifact": "Mountains/mountain-edge-outer-4.npz"
+    },
+    {
+      "key": "mountains/mountain-side-1",
+      "family": "Mountains",
+      "source": "Mountains/mountain-side-1.gltf",
+      "artifact": "Mountains/mountain-side-1.npz"
+    },
+    {
+      "key": "mountains/mountain-side-2",
+      "family": "Mountains",
+      "source": "Mountains/mountain-side-2.gltf",
+      "artifact": "Mountains/mountain-side-2.npz"
+    },
+    {
+      "key": "mountains/mountain-side-3",
+      "family": "Mountains",
+      "source": "Mountains/mountain-side-3.gltf",
+      "artifact": "Mountains/mountain-side-3.npz"
+    },
+    {
+      "key": "mountains/mountain-side-4",
+      "family": "Mountains",
+      "source": "Mountains/mountain-side-4.gltf",
+      "artifact": "Mountains/mountain-side-4.npz"
+    },
+    {
+      "key": "paths/path-3-way-crossing-1",
+      "family": "Paths",
+      "source": "Paths/path-3-way-crossing-1.gltf",
+      "artifact": "Paths/path-3-way-crossing-1.npz"
+    },
+    {
+      "key": "paths/path-3-way-crossing-2",
+      "family": "Paths",
+      "source": "Paths/path-3-way-crossing-2.gltf",
+      "artifact": "Paths/path-3-way-crossing-2.npz"
+    },
+    {
+      "key": "paths/path-4-way-crossing-1",
+      "family": "Paths",
+      "source": "Paths/path-4-way-crossing-1.gltf",
+      "artifact": "Paths/path-4-way-crossing-1.npz"
+    },
+    {
+      "key": "paths/path-4-way-crossing-2",
+      "family": "Paths",
+      "source": "Paths/path-4-way-crossing-2.gltf",
+      "artifact": "Paths/path-4-way-crossing-2.npz"
+    },
+    {
+      "key": "paths/path-curve-1",
+      "family": "Paths",
+      "source": "Paths/path-curve-1.gltf",
+      "artifact": "Paths/path-curve-1.npz"
+    },
+    {
+      "key": "paths/path-curve-2",
+      "family": "Paths",
+      "source": "Paths/path-curve-2.gltf",
+      "artifact": "Paths/path-curve-2.npz"
+    },
+    {
+      "key": "paths/path-curve-3",
+      "family": "Paths",
+      "source": "Paths/path-curve-3.gltf",
+      "artifact": "Paths/path-curve-3.npz"
+    },
+    {
+      "key": "paths/path-curve-4",
+      "family": "Paths",
+      "source": "Paths/path-curve-4.gltf",
+      "artifact": "Paths/path-curve-4.npz"
+    },
+    {
+      "key": "paths/path-dead-end",
+      "family": "Paths",
+      "source": "Paths/path-dead-end.gltf",
+      "artifact": "Paths/path-dead-end.npz"
+    },
+    {
+      "key": "paths/path-straight-1",
+      "family": "Paths",
+      "source": "Paths/path-straight-1.gltf",
+      "artifact": "Paths/path-straight-1.npz"
+    },
+    {
+      "key": "paths/path-straight-2",
+      "family": "Paths",
+      "source": "Paths/path-straight-2.gltf",
+      "artifact": "Paths/path-straight-2.npz"
+    },
+    {
+      "key": "paths/path-straight-3",
+      "family": "Paths",
+      "source": "Paths/path-straight-3.gltf",
+      "artifact": "Paths/path-straight-3.npz"
+    },
+    {
+      "key": "paths/path-straight-4",
+      "family": "Paths",
+      "source": "Paths/path-straight-4.gltf",
+      "artifact": "Paths/path-straight-4.npz"
+    },
+    {
+      "key": "roads/road-edgy-3-way-crossing-1",
+      "family": "Roads",
+      "source": "Roads/road-edgy-3-way-crossing-1.gltf",
+      "artifact": "Roads/road-edgy-3-way-crossing-1.npz"
+    },
+    {
+      "key": "roads/road-edgy-3-way-crossing-2",
+      "family": "Roads",
+      "source": "Roads/road-edgy-3-way-crossing-2.gltf",
+      "artifact": "Roads/road-edgy-3-way-crossing-2.npz"
+    },
+    {
+      "key": "roads/road-edgy-4-way-crossing-1",
+      "family": "Roads",
+      "source": "Roads/road-edgy-4-way-crossing-1.gltf",
+      "artifact": "Roads/road-edgy-4-way-crossing-1.npz"
+    },
+    {
+      "key": "roads/road-edgy-4-way-crossing-2",
+      "family": "Roads",
+      "source": "Roads/road-edgy-4-way-crossing-2.gltf",
+      "artifact": "Roads/road-edgy-4-way-crossing-2.npz"
+    },
+    {
+      "key": "roads/road-edgy-curve-1",
+      "family": "Roads",
+      "source": "Roads/road-edgy-curve-1.gltf",
+      "artifact": "Roads/road-edgy-curve-1.npz"
+    },
+    {
+      "key": "roads/road-edgy-curve-2",
+      "family": "Roads",
+      "source": "Roads/road-edgy-curve-2.gltf",
+      "artifact": "Roads/road-edgy-curve-2.npz"
+    },
+    {
+      "key": "roads/road-edgy-curve-3",
+      "family": "Roads",
+      "source": "Roads/road-edgy-curve-3.gltf",
+      "artifact": "Roads/road-edgy-curve-3.npz"
+    },
+    {
+      "key": "roads/road-edgy-curve-4",
+      "family": "Roads",
+      "source": "Roads/road-edgy-curve-4.gltf",
+      "artifact": "Roads/road-edgy-curve-4.npz"
+    },
+    {
+      "key": "roads/road-edgy-dead-end-1",
+      "family": "Roads",
+      "source": "Roads/road-edgy-dead-end-1.gltf",
+      "artifact": "Roads/road-edgy-dead-end-1.npz"
+    },
+    {
+      "key": "roads/road-edgy-dead-end-2",
+      "family": "Roads",
+      "source": "Roads/road-edgy-dead-end-2.gltf",
+      "artifact": "Roads/road-edgy-dead-end-2.npz"
+    },
+    {
+      "key": "roads/road-rounded-3-way-crossing-1",
+      "family": "Roads",
+      "source": "Roads/road-rounded-3-way-crossing-1.gltf",
+      "artifact": "Roads/road-rounded-3-way-crossing-1.npz"
+    },
+    {
+      "key": "roads/road-rounded-3-way-crossing-2",
+      "family": "Roads",
+      "source": "Roads/road-rounded-3-way-crossing-2.gltf",
+      "artifact": "Roads/road-rounded-3-way-crossing-2.npz"
+    },
+    {
+      "key": "roads/road-rounded-4-way-crossing-1",
+      "family": "Roads",
+      "source": "Roads/road-rounded-4-way-crossing-1.gltf",
+      "artifact": "Roads/road-rounded-4-way-crossing-1.npz"
+    },
+    {
+      "key": "roads/road-rounded-4-way-crossing-2",
+      "family": "Roads",
+      "source": "Roads/road-rounded-4-way-crossing-2.gltf",
+      "artifact": "Roads/road-rounded-4-way-crossing-2.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-1",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-1.gltf",
+      "artifact": "Roads/road-rounded-curve-1.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-2",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-2.gltf",
+      "artifact": "Roads/road-rounded-curve-2.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-3",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-3.gltf",
+      "artifact": "Roads/road-rounded-curve-3.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-4",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-4.gltf",
+      "artifact": "Roads/road-rounded-curve-4.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-large-1",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-large-1.gltf",
+      "artifact": "Roads/road-rounded-curve-large-1.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-large-2",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-large-2.gltf",
+      "artifact": "Roads/road-rounded-curve-large-2.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-large-3",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-large-3.gltf",
+      "artifact": "Roads/road-rounded-curve-large-3.npz"
+    },
+    {
+      "key": "roads/road-rounded-curve-large-4",
+      "family": "Roads",
+      "source": "Roads/road-rounded-curve-large-4.gltf",
+      "artifact": "Roads/road-rounded-curve-large-4.npz"
+    },
+    {
+      "key": "roads/road-rounded-dead-end-1",
+      "family": "Roads",
+      "source": "Roads/road-rounded-dead-end-1.gltf",
+      "artifact": "Roads/road-rounded-dead-end-1.npz"
+    },
+    {
+      "key": "roads/road-rounded-dead-end-2",
+      "family": "Roads",
+      "source": "Roads/road-rounded-dead-end-2.gltf",
+      "artifact": "Roads/road-rounded-dead-end-2.npz"
+    },
+    {
+      "key": "roads/road-straight-1",
+      "family": "Roads",
+      "source": "Roads/road-straight-1.gltf",
+      "artifact": "Roads/road-straight-1.npz"
+    },
+    {
+      "key": "roads/road-straight-2",
+      "family": "Roads",
+      "source": "Roads/road-straight-2.gltf",
+      "artifact": "Roads/road-straight-2.npz"
+    },
+    {
+      "key": "roads/road-straight-3",
+      "family": "Roads",
+      "source": "Roads/road-straight-3.gltf",
+      "artifact": "Roads/road-straight-3.npz"
+    },
+    {
+      "key": "roads/road-straight-4",
+      "family": "Roads",
+      "source": "Roads/road-straight-4.gltf",
+      "artifact": "Roads/road-straight-4.npz"
+    },
+    {
+      "key": "stones/stone-1",
+      "family": "Stones",
+      "source": "Stones/stone-1.gltf",
+      "artifact": "Stones/stone-1.npz"
+    },
+    {
+      "key": "stones/stone-2",
+      "family": "Stones",
+      "source": "Stones/stone-2.gltf",
+      "artifact": "Stones/stone-2.npz"
+    },
+    {
+      "key": "stones/stone-3",
+      "family": "Stones",
+      "source": "Stones/stone-3.gltf",
+      "artifact": "Stones/stone-3.npz"
+    },
+    {
+      "key": "stones/stone-4",
+      "family": "Stones",
+      "source": "Stones/stone-4.gltf",
+      "artifact": "Stones/stone-4.npz"
+    },
+    {
+      "key": "stones/stone-5",
+      "family": "Stones",
+      "source": "Stones/stone-5.gltf",
+      "artifact": "Stones/stone-5.npz"
+    },
+    {
+      "key": "stones/stone-6",
+      "family": "Stones",
+      "source": "Stones/stone-6.gltf",
+      "artifact": "Stones/stone-6.npz"
+    },
+    {
+      "key": "trackequip/track-equip-barrier-bar",
+      "family": "TrackEquip",
+      "source": "TrackEquip/track-equip-barrier-bar.gltf",
+      "artifact": "TrackEquip/track-equip-barrier-bar.npz"
+    },
+    {
+      "key": "trackequip/track-equip-barrier-bracket",
+      "family": "TrackEquip",
+      "source": "TrackEquip/track-equip-barrier-bracket.gltf",
+      "artifact": "TrackEquip/track-equip-barrier-bracket.npz"
+    },
+    {
+      "key": "trackequip/track-equip-dead-end",
+      "family": "TrackEquip",
+      "source": "TrackEquip/track-equip-dead-end.gltf",
+      "artifact": "TrackEquip/track-equip-dead-end.npz"
+    },
+    {
+      "key": "tracks/track-curve-large-inner",
+      "family": "Tracks",
+      "source": "Tracks/track-curve-large-inner.gltf",
+      "artifact": "Tracks/track-curve-large-inner.npz"
+    },
+    {
+      "key": "tracks/track-curve-large-outer",
+      "family": "Tracks",
+      "source": "Tracks/track-curve-large-outer.gltf",
+      "artifact": "Tracks/track-curve-large-outer.npz"
+    },
+    {
+      "key": "tracks/track-curve-large",
+      "family": "Tracks",
+      "source": "Tracks/track-curve-large.gltf",
+      "artifact": "Tracks/track-curve-large.npz"
+    },
+    {
+      "key": "tracks/track-curve",
+      "family": "Tracks",
+      "source": "Tracks/track-curve.gltf",
+      "artifact": "Tracks/track-curve.npz"
+    },
+    {
+      "key": "tracks/track-lane-switch-1",
+      "family": "Tracks",
+      "source": "Tracks/track-lane-switch-1.gltf",
+      "artifact": "Tracks/track-lane-switch-1.npz"
+    },
+    {
+      "key": "tracks/track-lane-switch-2",
+      "family": "Tracks",
+      "source": "Tracks/track-lane-switch-2.gltf",
+      "artifact": "Tracks/track-lane-switch-2.npz"
+    },
+    {
+      "key": "tracks/track-road-intersection-1",
+      "family": "Tracks",
+      "source": "Tracks/track-road-intersection-1.gltf",
+      "artifact": "Tracks/track-road-intersection-1.npz"
+    },
+    {
+      "key": "tracks/track-road-intersection-2",
+      "family": "Tracks",
+      "source": "Tracks/track-road-intersection-2.gltf",
+      "artifact": "Tracks/track-road-intersection-2.npz"
+    },
+    {
+      "key": "tracks/track-road-intersection-double-1",
+      "family": "Tracks",
+      "source": "Tracks/track-road-intersection-double-1.gltf",
+      "artifact": "Tracks/track-road-intersection-double-1.npz"
+    },
+    {
+      "key": "tracks/track-road-intersection-double-2",
+      "family": "Tracks",
+      "source": "Tracks/track-road-intersection-double-2.gltf",
+      "artifact": "Tracks/track-road-intersection-double-2.npz"
+    },
+    {
+      "key": "tracks/track-straight-double",
+      "family": "Tracks",
+      "source": "Tracks/track-straight-double.gltf",
+      "artifact": "Tracks/track-straight-double.npz"
+    },
+    {
+      "key": "tracks/track-straight",
+      "family": "Tracks",
+      "source": "Tracks/track-straight.gltf",
+      "artifact": "Tracks/track-straight.npz"
+    },
+    {
+      "key": "tracks/track-switch-1",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-1.gltf",
+      "artifact": "Tracks/track-switch-1.npz"
+    },
+    {
+      "key": "tracks/track-switch-2",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-2.gltf",
+      "artifact": "Tracks/track-switch-2.npz"
+    },
+    {
+      "key": "tracks/track-switch-3",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-3.gltf",
+      "artifact": "Tracks/track-switch-3.npz"
+    },
+    {
+      "key": "tracks/track-switch-4",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-4.gltf",
+      "artifact": "Tracks/track-switch-4.npz"
+    },
+    {
+      "key": "tracks/track-switch-5",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-5.gltf",
+      "artifact": "Tracks/track-switch-5.npz"
+    },
+    {
+      "key": "tracks/track-switch-6",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-6.gltf",
+      "artifact": "Tracks/track-switch-6.npz"
+    },
+    {
+      "key": "tracks/track-switch-large-1",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-large-1.gltf",
+      "artifact": "Tracks/track-switch-large-1.npz"
+    },
+    {
+      "key": "tracks/track-switch-large-2",
+      "family": "Tracks",
+      "source": "Tracks/track-switch-large-2.gltf",
+      "artifact": "Tracks/track-switch-large-2.npz"
+    },
+    {
+      "key": "trees/tree-1",
+      "family": "Trees",
+      "source": "Trees/tree-1.gltf",
+      "artifact": "Trees/tree-1.npz"
+    },
+    {
+      "key": "trees/tree-2",
+      "family": "Trees",
+      "source": "Trees/tree-2.gltf",
+      "artifact": "Trees/tree-2.npz"
+    },
+    {
+      "key": "trees/tree-3",
+      "family": "Trees",
+      "source": "Trees/tree-3.gltf",
+      "artifact": "Trees/tree-3.npz"
+    },
+    {
+      "key": "trees/tree-4",
+      "family": "Trees",
+      "source": "Trees/tree-4.gltf",
+      "artifact": "Trees/tree-4.npz"
+    },
+    {
+      "key": "trees/tree-5",
+      "family": "Trees",
+      "source": "Trees/tree-5.gltf",
+      "artifact": "Trees/tree-5.npz"
+    },
+    {
+      "key": "trees/tree-6",
+      "family": "Trees",
+      "source": "Trees/tree-6.gltf",
+      "artifact": "Trees/tree-6.npz"
+    },
+    {
+      "key": "trees/tree-7",
+      "family": "Trees",
+      "source": "Trees/tree-7.gltf",
+      "artifact": "Trees/tree-7.npz"
+    },
+    {
+      "key": "trees/tree-8",
+      "family": "Trees",
+      "source": "Trees/tree-8.gltf",
+      "artifact": "Trees/tree-8.npz"
+    },
+    {
+      "key": "water/water-1",
+      "family": "Water",
+      "source": "Water/water-1.gltf",
+      "artifact": "Water/water-1.npz"
+    },
+    {
+      "key": "water/water-2",
+      "family": "Water",
+      "source": "Water/water-2.gltf",
+      "artifact": "Water/water-2.npz"
+    },
+    {
+      "key": "water/water-3",
+      "family": "Water",
+      "source": "Water/water-3.gltf",
+      "artifact": "Water/water-3.npz"
+    },
+    {
+      "key": "water/water-4",
+      "family": "Water",
+      "source": "Water/water-4.gltf",
+      "artifact": "Water/water-4.npz"
+    },
+    {
+      "key": "wood/wood-1",
+      "family": "Wood",
+      "source": "Wood/wood-1.gltf",
+      "artifact": "Wood/wood-1.npz"
+    },
+    {
+      "key": "wood/wood-2",
+      "family": "Wood",
+      "source": "Wood/wood-2.gltf",
+      "artifact": "Wood/wood-2.npz"
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 """3D terrain renderer checks. Run: python test_terrain3d.py"""
 import os
 import sys
+from datetime import date
+from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -9,7 +12,13 @@ import numpy as np
 from ui.terrain3d import (BUILDING_MATERIALS, CAM_ROT, MATERIALS, MESH_DIR,
                            PX_PER_UNIT, ROAD_MATERIALS,
                            ROAD_ROLE_TO_SHAPE_YAW, TILE_SPACING,
-                           _VERTICAL_FORESHORTENING, build_instances)
+                           TRANSMISSION_CONDUCTOR_HEIGHT_WORLD,
+                           _VERTICAL_FORESHORTENING,
+                           build_tower_billboards,
+                           build_transmission_geometry, build_instances,
+                           conductor_strip_mesh, load_transmission,
+                           release_transmission, screen_px_to_world,
+                           tower_billboard_surface)
 from ui.iso_city import IsoCity, iso_xy
 from ui.urban_blocks import UrbanRoad
 
@@ -27,7 +36,175 @@ from ui.terrain3d import build_plant_billboards
 from ui.terrain3d import load_billboards
 
 
+def test_is_enabled_defaults_on_and_accepts_explicit_opt_out_values():
+    """Catch treating GRIDMANAGER_TERRAIN3D as opt-in instead of opt-out."""
+    from ui import terrain3d
+
+    key = "GRIDMANAGER_TERRAIN3D"
+    sentinel = object()
+    original = os.environ.get(key, sentinel)
+    try:
+        os.environ.pop(key, None)
+        assert terrain3d.is_enabled() is True
+
+        for value in ("0", "false", "no", "off"):
+            os.environ[key] = value
+            assert terrain3d.is_enabled() is False, value
+
+        for value in ("1", "true", "yes", "on"):
+            os.environ[key] = value
+            assert terrain3d.is_enabled() is True, value
+    finally:
+        if original is sentinel:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original
+
+
+def test_covers_tile_kind_keeps_dense_downtown_sprite_overlay_visible():
+    from ui import terrain3d
+    assert terrain3d.covers_tile_kind("grass")
+    assert terrain3d.covers_tile_kind("road")
+    assert terrain3d.covers_tile_kind("vroad")
+    assert not terrain3d.covers_tile_kind("voxel_bldg")
+    assert not terrain3d.covers_tile_kind("pad")
+    assert not terrain3d.covers_tile_kind("campus")
+
+
+def test_kit_manifest_covers_every_source_gltf_and_artifact():
+    from ui import terrain3d
+
+    repo_root = Path(__file__).resolve().parents[1]
+    source_root = repo_root / terrain3d.KIT_SOURCE_ROOT
+    expected_sources = {
+        path.relative_to(source_root).as_posix()
+        for path in source_root.rglob("*.gltf")
+    }
+    manifest = terrain3d.load_kit_manifest()
+    manifest_sources = {entry["source"] for entry in manifest.values()}
+
+    assert len(expected_sources) >= 373
+    assert manifest_sources == expected_sources
+    for key, entry in manifest.items():
+        assert key == entry["key"]
+        assert terrain3d.kit_artifact_path(entry).exists(), key
+
+
+def test_kit_semantic_sources_exist_for_active_and_deferred_families():
+    from ui import terrain3d
+
+    manifest = terrain3d.load_kit_manifest()
+    semantics = terrain3d.available_kit_semantics()
+
+    required = {
+        "terrain.grass.base", "terrain.farm.base", "terrain.water.base",
+        "terrain.mountain.base", "terrain.desert.base", "terrain.city.base",
+        "road.straight", "road.corner", "road.tee", "road.cross",
+        "track.straight", "track.curve", "track.switch",
+        "prop.tree", "prop.bush", "prop.stone", "prop.cactus",
+        "prop.wood", "prop.bones", "city.building",
+        "edge.forest_water.side", "edge.dirt_water.side",
+        "edge.desert_water.side", "edge.city_water.side",
+    }
+
+    assert required <= set(semantics)
+    for semantic, key in semantics.items():
+        assert key in manifest, semantic
+        assert terrain3d.kit_artifact_path(manifest[key]).exists(), semantic
+
+
+def test_active_kit_sources_are_rich_enough_for_finished_visuals():
+    from ui import terrain3d
+
+    active_sources = set(terrain3d.KIT_ACTIVE_MESH_SOURCES.values())
+
+    assert len(active_sources) >= 24
+    assert any(key.startswith("forestwater/") for key in active_sources)
+    assert any(key.startswith("dirtwater/") for key in active_sources)
+    assert any(key.startswith("roads/road-straight-") for key in active_sources)
+    assert any(key.startswith("mountains/") for key in active_sources)
+
+
+def test_lighting_for_state_derives_day_night_winter_and_storm_snow():
+    from ui import terrain3d
+
+    noon = SimpleNamespace(sim_hour=12.0, date=date(2026, 7, 15), active_event=None)
+    night = SimpleNamespace(sim_hour=2.0, date=date(2026, 7, 15), active_event=None)
+    winter = SimpleNamespace(sim_hour=12.0, date=date(2026, 1, 15), active_event=None)
+    snow = SimpleNamespace(
+        sim_hour=12.0,
+        date=date(2026, 1, 15),
+        active_event=SimpleNamespace(kind="SNOW"),
+    )
+    ice = SimpleNamespace(
+        sim_hour=12.0,
+        date=date(2026, 1, 15),
+        active_event=SimpleNamespace(kind="ICE_STORM"),
+    )
+
+    noon_lighting = terrain3d.lighting_for_state(noon)
+    night_lighting = terrain3d.lighting_for_state(night)
+    winter_lighting = terrain3d.lighting_for_state(winter)
+    snow_lighting = terrain3d.lighting_for_state(snow)
+    ice_lighting = terrain3d.lighting_for_state(ice)
+
+    assert noon_lighting["ambient"] > night_lighting["ambient"]
+    assert night_lighting["light_tint"][0] < noon_lighting["light_tint"][0]
+    assert night_lighting["light_tint"][1] < noon_lighting["light_tint"][1]
+    assert night_lighting["light_tint"][2] <= noon_lighting["light_tint"][2]
+    assert winter_lighting["snow_mix"] > 0.0
+    assert snow_lighting["snow_mix"] > winter_lighting["snow_mix"]
+    assert ice_lighting["snow_mix"] > winter_lighting["snow_mix"]
+
+
+def test_lighting_for_state_defaults_without_complete_state():
+    from ui import terrain3d
+
+    lighting = terrain3d.lighting_for_state(SimpleNamespace())
+
+    assert set(lighting) == {"ambient", "light_tint", "snow_mix", "wet_mix", "ice_mix"}
+    assert 0.0 <= lighting["ambient"] <= 1.0
+    assert len(lighting["light_tint"]) == 3
+    for channel in lighting["light_tint"]:
+        assert 0.0 <= channel <= 1.0
+    for key in ("snow_mix", "wet_mix", "ice_mix"):
+        assert 0.0 <= lighting[key] <= 1.0
+
+
+def test_lighting_for_state_derives_rain_wetness_and_ice():
+    from ui import terrain3d
+
+    rain = SimpleNamespace(
+        sim_hour=12.0,
+        date=date(2026, 7, 15),
+        active_event=SimpleNamespace(kind="RAIN"),
+    )
+    snow = SimpleNamespace(
+        sim_hour=12.0,
+        date=date(2026, 1, 15),
+        active_event=SimpleNamespace(kind="SNOW"),
+    )
+    ice = SimpleNamespace(
+        sim_hour=12.0,
+        date=date(2026, 1, 15),
+        active_event=SimpleNamespace(kind="ICE_STORM"),
+    )
+
+    rain_lighting = terrain3d.lighting_for_state(rain)
+    snow_lighting = terrain3d.lighting_for_state(snow)
+    ice_lighting = terrain3d.lighting_for_state(ice)
+
+    assert 0.25 <= rain_lighting["wet_mix"] <= 0.40
+    assert 0.05 <= snow_lighting["wet_mix"] <= 0.16
+    assert 0.16 <= ice_lighting["wet_mix"] <= 0.30
+    assert 0.24 <= ice_lighting["ice_mix"] <= 0.36
+    assert rain_lighting["ice_mix"] == 0.0
+    assert snow_lighting["ice_mix"] == 0.0
+
+
 def test_build_instances_buckets_by_material_and_skips_unrecognized_kinds():
+    from ui import terrain3d
+
     tiles = {
         (0, 0): ("grass", None),
         (1, 0): ("farm", None),
@@ -37,10 +214,11 @@ def test_build_instances_buckets_by_material_and_skips_unrecognized_kinds():
         (5, 0): ("nonsense_kind", None),  # not a terrain/road/building kind, skip
     }
     instances = build_instances(tiles)
-    assert set(instances) == {"grass", "farm", "tree", "water", "mountain"}
-    for material in MATERIALS:
-        assert instances[material].shape == (1, 4)
-        assert instances[material].dtype == np.float32
+    assert len(instances) == 5
+    assert all(name in terrain3d.TERRAIN_RUNTIME_MESHES for name in instances)
+    for offsets in instances.values():
+        assert offsets.shape == (1, 4)
+        assert offsets.dtype == np.float32
 
 
 def test_build_instances_raises_on_unrecognized_road_role():
@@ -66,21 +244,30 @@ def test_build_instances_raises_on_unrecognized_building_archetype():
 
 
 def test_build_instances_offset_matches_col_row():
+    from ui import terrain3d
+
     tiles = {(3, 5): ("grass", None)}
     instances = build_instances(tiles)
-    expected = np.array([-5.0 * TILE_SPACING, 0.0, 3.0 * TILE_SPACING, 0.0], dtype="f4")
-    assert np.array_equal(instances["grass"][0], expected)
+    mesh_name = terrain3d.terrain_mesh_name("grass", 3, 5, tiles)
+    expected = np.array([
+        -5.0 * TILE_SPACING,
+        terrain3d.terrain_height_world("grass", None, 3, 5),
+        3.0 * TILE_SPACING,
+        0.0,
+    ], dtype="f4")
+    assert np.array_equal(instances[mesh_name][0], expected)
 
 
 def test_build_instances_groups_multiple_tiles_of_the_same_material():
     tiles = {(0, 0): ("grass", None), (1, 1): ("grass", None), (2, 2): ("grass", None)}
     instances = build_instances(tiles)
-    assert instances["grass"].shape == (3, 4)
+    assert sum(len(v) for name, v in instances.items() if name.startswith("grass")) == 3
 
 
 def test_build_instances_omits_materials_with_no_tiles():
     instances = build_instances({(0, 0): ("water", None)})
-    assert set(instances) == {"water"}
+    assert len(instances) == 1
+    assert next(iter(instances)).startswith("water")
 
 
 def test_build_instances_matches_iso_xy_sign_convention():
@@ -96,7 +283,8 @@ def test_build_instances_matches_iso_xy_sign_convention():
     on zero -- neither has a sign to compare."""
     for col, row in [(1, 0), (0, 1), (2, 1)]:
         tiles = {(col, row): ("grass", None)}
-        offset = build_instances(tiles)["grass"][0]
+        offset = next(iter(build_instances(tiles).values()))[0].copy()
+        offset[1] = 0.0
         cam = CAM_ROT @ offset[:3]
         sx = cam[0]
         screen_y = -cam[1]
@@ -129,7 +317,8 @@ def test_build_instances_projection_matches_iso_xy_proportionally():
     ratios_y = []
     for col, row in pairs:
         tiles = {(col, row): ("grass", None)}
-        offset = build_instances(tiles)["grass"][0]
+        offset = next(iter(build_instances(tiles).values()))[0].copy()
+        offset[1] = 0.0
         sx, screen_y = _project(offset)
         iso_x, iso_y = iso_xy(col, row)
         assert iso_x != 0
@@ -167,15 +356,24 @@ def test_build_instances_buckets_road_tiles_by_shape_with_correct_yaw():
         (4, 0): ("road", _road_tile(4, 0, "tee_ne")),
     }
     instances = build_instances(tiles)
-    assert instances["straight"].shape == (2, 4)
-    yaws = sorted(instances["straight"][:, 3].tolist())
+
+    def offsets_for(prefix):
+        rows = [v for name, v in instances.items() if name == prefix or name.startswith(prefix + "_")]
+        return np.vstack(rows)
+
+    straight = offsets_for("straight")
+    assert straight.shape == (2, 4)
+    yaws = sorted(straight[:, 3].tolist())
     assert yaws == [0.0, 90.0]
-    assert instances["cross"].shape == (1, 4)
-    assert instances["cross"][0, 3] == 0.0
-    assert instances["corner"].shape == (1, 4)
-    assert instances["corner"][0, 3] == 180.0
-    assert instances["tee"].shape == (1, 4)
-    assert instances["tee"][0, 3] == 180.0
+    cross = offsets_for("cross")
+    assert cross.shape == (1, 4)
+    assert cross[0, 3] == 0.0
+    corner = offsets_for("corner")
+    assert corner.shape == (1, 4)
+    assert corner[0, 3] == 180.0
+    tee = offsets_for("tee")
+    assert tee.shape == (1, 4)
+    assert tee[0, 3] == 180.0
 
 
 def test_road_role_to_shape_yaw_covers_all_seven_roles():
@@ -200,34 +398,93 @@ def test_build_instances_buckets_urban_block_tiles_by_archetype():
     assert instances["house"].shape == (1, 4)
 
 
-def test_build_instances_produces_road_instances_from_a_real_city_layout():
-    """Integration check for Finding 1/3: a real IsoCity layout at a
-    population large enough to trigger road network growth (per the P2
-    review's own investigation) must actually produce road instances once
-    build_instances() correctly reads UrbanRoad.role. Before the Finding 1
-    fix, this test would fail with road_instance_count == 0 because the raw
-    UrbanRoad payload was never matching ROAD_ROLE_TO_SHAPE_YAW.
+def test_build_instances_maps_dense_downtown_voxel_buildings():
+    tiles = {
+        (0, 0): ("voxel_bldg", "apartment"),
+        (1, 0): ("voxel_bldg", "market"),
+        (2, 0): ("voxel_bldg", "school"),
+    }
+    instances = build_instances(tiles)
+    assert sum(len(v) for k, v in instances.items() if k.startswith("downtown_apartment")) == 1
+    assert sum(len(v) for k, v in instances.items() if k.startswith("downtown_market")) == 1
+    assert sum(len(v) for k, v in instances.items() if k.startswith("downtown_school")) == 1
 
-    Building instances are deliberately NOT asserted here: the review found
-    urban_block tiles never survive _layout()'s dense-downtown overwrite for
-    any population tested, so BUILDING_MATERIALS counts are legitimately
-    zero right now -- a separate, already-tracked issue this fix pass does
-    not touch (iso_city.py's layout logic is out of scope)."""
+
+def test_build_instances_maps_dense_downtown_vroads_by_grid_role():
+    tiles = {
+        (0, 0): ("vroad", None),
+        (4, 1): ("vroad", None),
+        (1, 4): ("vroad", None),
+    }
+    instances = build_instances(tiles)
+    cross = np.vstack([v for k, v in instances.items() if k == "cross" or k.startswith("cross_")])
+    straight = np.vstack([v for k, v in instances.items() if k == "straight" or k.startswith("straight_")])
+    assert cross.shape == (1, 4)
+    assert straight.shape == (2, 4)
+    assert set(straight[:, 3]) == {0.0, 90.0}
+
+
+def test_build_instances_produces_road_and_building_instances_from_a_real_city_layout():
     rect = pygame.Rect(0, 0, 1400, 410)
     city = IsoCity(None)
     city._layout(rect, 2_000_000, ("gas",))
     instances = build_instances(city.tiles)
-    road_instance_count = sum(len(v) for k, v in instances.items() if k in ROAD_MATERIALS)
+    road_instance_count = sum(
+        len(v) for k, v in instances.items()
+        if any(k == r or k.startswith(r + "_") for r in ROAD_MATERIALS)
+    )
+    building_instance_count = sum(
+        len(v) for k, v in instances.items()
+        if k in BUILDING_MATERIALS or k.startswith("downtown_")
+    )
     assert road_instance_count > 0
+    assert building_instance_count > 20
 
 
-def _mesh_open_arms(shape, threshold=1.5):
+def test_real_city_layout_produces_finished_visual_mesh_variety_and_elevation():
+    rect = pygame.Rect(0, 0, 1400, 900)
+    city = IsoCity(None)
+    city._layout(rect, 2_000_000, ("gas", "solar", "wind", "hydro"))
+    instances = build_instances(city.tiles)
+
+    non_empty = {name: offsets for name, offsets in instances.items() if len(offsets)}
+    building_buckets = [
+        name for name in non_empty
+        if name in BUILDING_MATERIALS or name.startswith("downtown_")
+    ]
+    y_values = np.concatenate([offsets[:, 1] for offsets in non_empty.values()])
+
+    assert len(non_empty) >= 24
+    assert len(building_buckets) >= 8
+    assert y_values.max() > 0.20
+    assert np.unique(np.round(y_values, 2)).size >= 5
+
+
+def test_real_city_layout_places_sparse_terrain_decoration_props():
+    rect = pygame.Rect(0, 0, 1400, 900)
+    city = IsoCity(None)
+    city._layout(rect, 2_000_000, ("gas", "solar", "wind", "hydro"))
+    instances = build_instances(city.tiles)
+
+    prop_prefixes = ("bush_", "stone_", "wood_", "bones_", "cactus_")
+    prop_buckets = [name for name in instances if name.startswith(prop_prefixes)]
+    prop_count = sum(len(instances[name]) for name in prop_buckets)
+
+    assert len(prop_buckets) >= 8
+    assert prop_count >= 120
+
+
+def _mesh_open_arms(mesh_name, threshold=1.5):
     """For a baked road mesh's `pos` array, return the set of unit (x, z)
     directions whose extreme value reaches close to the tile edge -- i.e.
     the mesh's open "connection arms" at yaw=0. A simple, GL-free geometry
     check standing in for a full render: it only inspects the bounding box
     of baked vertex positions, not actual rendered pixels."""
-    data = np.load(MESH_DIR / "roads" / f"{shape}.npz")
+    from ui import terrain3d
+
+    manifest = terrain3d.load_kit_manifest()
+    source_key = terrain3d.KIT_ACTIVE_MESH_SOURCES[mesh_name]
+    data = np.load(terrain3d.kit_artifact_path(manifest[source_key]))
     pos = data["pos"]
     arms = set()
     for axis, positive in (("x", True), ("x", False), ("z", True), ("z", False)):
@@ -272,11 +529,15 @@ def test_road_mesh_geometry_arms_match_yaw_rotated_role_connectivity():
     name requires, once rotated by ROAD_ROLE_TO_SHAPE_YAW's yaw -- no GL
     context needed. `cross` is 4-way symmetric so it is not checked here
     (any yaw is equally valid for it)."""
+    from ui import terrain3d
+
     for role, required in _ROLE_REQUIRED_ARMS.items():
         shape, yaw = ROAD_ROLE_TO_SHAPE_YAW[role]
-        base_arms = _mesh_open_arms(shape)
-        rotated_arms = {_rotate(arm, yaw) for arm in base_arms}
-        assert required <= rotated_arms, (role, shape, yaw, required, rotated_arms)
+        for mesh_name, _source in terrain3d.ROAD_VARIANT_SOURCES[shape]:
+            base_arms = _mesh_open_arms(mesh_name)
+            rotated_arms = {_rotate(arm, yaw) for arm in base_arms}
+            assert rotated_arms == required, (
+                role, mesh_name, yaw, required, rotated_arms)
 
 
 class _FakeCamera:
@@ -285,12 +546,91 @@ class _FakeCamera:
         self.zoom = zoom
 
 
+def _flat_test_quad(rgb):
+    pos = np.array([
+        [-1.0, 0.0, -1.0],
+        [1.0, 0.0, -1.0],
+        [1.0, 0.0, 1.0],
+        [-1.0, 0.0, 1.0],
+    ], dtype="f4")
+    nrm = np.tile(np.array([0.0, -1.0, 0.0], dtype="f4"), (4, 1))
+    uv = np.array([[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]], dtype="f4")
+    idx = np.array([[0, 1, 2], [0, 2, 3]], dtype="i4")
+    tex = np.array([[[rgb[0], rgb[1], rgb[2], 255]]], dtype="u1")
+    return pos, nrm, uv, idx, tex
+
+
 def test_load_meshes_covers_terrain_road_and_building_materials():
+    from ui import terrain3d
+
     ctx = create_context()
     try:
         prog = create_program(ctx)
         meshes = load_meshes(ctx, prog)
-        assert set(meshes) == set(MATERIALS) | set(ROAD_MATERIALS) | set(BUILDING_MATERIALS)
+        assert set(terrain3d.RUNTIME_MESH_NAMES) <= set(meshes)
+        assert set(MATERIALS) <= set(meshes)
+        assert set(ROAD_MATERIALS) <= set(meshes)
+        assert set(BUILDING_MATERIALS) <= set(meshes)
+        for mesh in meshes.values():
+            mesh.release()
+    finally:
+        ctx.release()
+
+
+def test_load_meshes_uses_kit_manifest_for_active_terrain_and_roads():
+    from ui import terrain3d
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog)
+        active = terrain3d.KIT_ACTIVE_MESH_SOURCES
+        for material in MATERIALS:
+            assert meshes[material].source_key == active[material]
+        for shape in ROAD_MATERIALS:
+            assert meshes[shape].source_key == active[shape]
+        for mesh in meshes.values():
+            mesh.release()
+    finally:
+        ctx.release()
+
+
+def test_load_meshes_accepts_string_mesh_dir_paths():
+    from ui import terrain3d
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog, mesh_dir=str(MESH_DIR))
+        assert set(terrain3d.RUNTIME_MESH_NAMES) <= set(meshes)
+        for mesh in meshes.values():
+            mesh.release()
+    finally:
+        ctx.release()
+
+
+def test_load_meshes_custom_mesh_dir_keeps_variant_buckets_renderable():
+    from ui import terrain3d
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        custom_mesh_dir = Path("energy_grid_game") / "assets" / "terrain3d"
+        assert custom_mesh_dir != MESH_DIR
+        meshes = load_meshes(ctx, prog, mesh_dir=custom_mesh_dir)
+        try:
+            instances = {
+                "grass_2": np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4"),
+                "straight_4": np.array([[3.2, 0.0, 0.0, 0.0]], dtype="f4"),
+                "downtown_office_c": np.array([[6.4, 0.0, 0.0, 0.0]], dtype="f4"),
+                "bush_1": np.array([[9.6, 0.0, 0.0, 0.0]], dtype="f4"),
+            }
+            upload_instances(ctx, meshes, instances)
+            for name in instances:
+                assert meshes[name].instance_count == 1
+        finally:
+            for mesh in meshes.values():
+                mesh.release()
     finally:
         ctx.release()
 
@@ -313,11 +653,139 @@ def test_draw_produces_a_readable_framebuffer_with_visible_content():
         ctx.release()
 
 
+def test_mixed_lit_and_unlit_meshes_do_not_leak_unlit_state():
+    from ui import terrain3d
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        red_mesh = terrain3d.GLMesh(
+            ctx, prog, *_flat_test_quad((255, 0, 0)),
+            unlit=True,
+            weather_role=terrain3d.WEATHER_BILLBOARD,
+        )
+        blue_mesh = terrain3d.GLMesh(
+            ctx, prog, *_flat_test_quad((0, 0, 255)),
+            unlit=False,
+            weather_role=terrain3d.WEATHER_BILLBOARD,
+        )
+        red_mesh.set_instances(np.array([[-2.0, 0.0, 0.0, 0.0]], dtype="f4"))
+        blue_mesh.set_instances(np.array([[2.0, 0.0, 0.0, 0.0]], dtype="f4"))
+        fbo = create_framebuffer(ctx, (96, 64))
+        draw(ctx, prog, {"red": red_mesh, "blue": blue_mesh}, fbo,
+             _FakeCamera(center=(0.0, 0.0), zoom=6.0), ambient=0.0)
+        rgba, size = read_rgba(fbo)
+        pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
+
+        assert pixels[:, :, 0].max() >= 250
+        assert pixels[:, :, 2].max() <= 40
+        red_mesh.release()
+        blue_mesh.release()
+        fbo.release()
+    finally:
+        ctx.release()
+
+
+def test_road_weather_role_darkens_and_desaturates_under_wet_weather():
+    from ui import terrain3d
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        road_mesh = terrain3d.GLMesh(
+            ctx, prog, *_flat_test_quad((60, 170, 220)),
+            unlit=True,
+            weather_role=terrain3d.WEATHER_ROAD,
+        )
+        road_mesh.set_instances(np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4"))
+        camera = _FakeCamera(center=(0.0, 0.0), zoom=8.0)
+
+        dry_fbo = create_framebuffer(ctx, (64, 64))
+        draw(ctx, prog, {"road": road_mesh}, dry_fbo, camera, wet_mix=0.0)
+        dry_rgba, size = read_rgba(dry_fbo)
+
+        wet_fbo = create_framebuffer(ctx, (64, 64))
+        draw(ctx, prog, {"road": road_mesh}, wet_fbo, camera, wet_mix=1.0)
+        wet_rgba, _ = read_rgba(wet_fbo)
+
+        dry = np.frombuffer(dry_rgba, dtype="u1").reshape(size[1], size[0], 4)
+        wet = np.frombuffer(wet_rgba, dtype="u1").reshape(size[1], size[0], 4)
+        dry_mask = dry[:, :, 3] > 0
+        wet_mask = wet[:, :, 3] > 0
+        dry_rgb = dry[:, :, :3][dry_mask]
+        wet_rgb = wet[:, :, :3][wet_mask]
+
+        assert wet_rgb.max() < dry_rgb.max()
+        assert (wet_rgb.max(axis=1) - wet_rgb.min(axis=1)).mean() < (
+            dry_rgb.max(axis=1) - dry_rgb.min(axis=1)
+        ).mean()
+        road_mesh.release()
+        dry_fbo.release()
+        wet_fbo.release()
+    finally:
+        ctx.release()
+
+
+def test_draw_real_city_layout_lands_near_viewport_center():
+    from types import SimpleNamespace
+
+    viewport = pygame.Rect(0, 0, 1000, 680)
+    gas = SimpleNamespace(
+        key="gas", max_output_mw=750.0, ramp_up_latency=3, ramp_down_latency=3)
+    state = SimpleNamespace(population=2_000_000, sources=[gas])
+    city = IsoCity(None)
+    city.prepare(viewport, state)
+    city.camera.center = [city._origin[0], city._origin[1]]
+    city.camera.zoom = 1
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog)
+        upload_instances(ctx, meshes, build_instances(city.tiles))
+        tx = load_transmission(
+            ctx, prog, build_transmission_geometry(city.transmission3d, city._origin))
+        fbo = create_framebuffer(ctx, viewport.size)
+        draw(ctx, prog, meshes, fbo, city.camera, transmission_meshes=tx,
+             world_origin=city._origin)
+        rgba, size = read_rgba(fbo)
+        pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
+        background = np.array([25, 28, 33], dtype="u1")
+        changed = np.abs(pixels[:, :, :3].astype("i2") - background.astype("i2")).sum(axis=2) > 20
+        ys, xs = np.where(changed)
+        assert xs.size > 0
+        assert abs(float(xs.mean()) - viewport.centerx) < viewport.width * 0.20
+        assert abs(float(ys.mean()) - viewport.centery) < viewport.height * 0.20
+        release_transmission(tx)
+        fbo.release()
+    finally:
+        ctx.release()
+
+
 def test_to_surface_returns_a_surface_of_the_requested_size():
     rgba = bytes([255, 0, 0, 255] * (8 * 8))
     surf = to_surface(rgba, (8, 8))
     assert isinstance(surf, pygame.Surface)
     assert surf.get_size() == (8, 8)
+
+
+def test_load_meshes_assigns_weather_roles_by_mesh_family():
+    from ui import terrain3d
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog)
+        for material in MATERIALS:
+            assert meshes[material].weather_role == terrain3d.WEATHER_TERRAIN
+        for shape in ROAD_MATERIALS:
+            assert meshes[shape].weather_role == terrain3d.WEATHER_ROAD
+        for archetype in BUILDING_MATERIALS:
+            assert meshes[archetype].weather_role == terrain3d.WEATHER_BUILDING
+        for mesh in meshes.values():
+            mesh.release()
+    finally:
+        ctx.release()
 
 
 def test_instance_yaw_actually_rotates_the_rendered_mesh():
@@ -420,6 +888,265 @@ def test_build_plant_billboards_handles_multiple_plants():
     assert len(build_plant_billboards(plants)) == 2
 
 
+def test_screen_px_to_world_round_trips_iso_projected_tile_center():
+    from ui.iso_city import iso_xy
+    col, row = 7, -3
+    origin = (700.0, 392.0)
+    sx, sy = iso_xy(col, row)
+    world = screen_px_to_world((sx + origin[0], sy + origin[1]), origin)
+    expected = (-float(row) * TILE_SPACING, 0.0, float(col) * TILE_SPACING)
+    assert np.allclose(world, expected, atol=1e-5)
+
+
+def test_build_transmission_geometry_creates_towers_and_conductors():
+    origin = (700.0, 392.0)
+    snapshot = ({
+        "key": "gas",
+        "substation_index": 0,
+        "tower_points": ((700.0, 392.0), (716.0, 400.0)),
+        "conductor_paths": {
+            -6: ((694.0, 376.0), (710.0, 384.0)),
+            6: ((706.0, 376.0), (722.0, 384.0)),
+        },
+    },)
+    geom = build_transmission_geometry(snapshot, origin=origin)
+    assert len(geom["towers"]) == 2
+    assert len(geom["conductors"]) == 2
+    assert geom["towers"][0]["key"] == "gas"
+    assert geom["conductors"][0]["key"] == "gas"
+    first_source = snapshot[0]["conductor_paths"][-6][0]
+    first_world = np.array([*geom["conductors"][0]["points"][0], 0.0], dtype="f4")
+    sx, sy = _project(first_world)
+    assert np.allclose((sx + origin[0], sy + origin[1]), first_source, atol=1e-4)
+    assert geom["conductors"][0]["points"][0][1] == TRANSMISSION_CONDUCTOR_HEIGHT_WORLD
+
+
+def test_build_transmission_geometry_from_a_real_city_layout():
+    from types import SimpleNamespace
+
+    viewport = pygame.Rect(0, 0, 1400, 700)
+    gas = SimpleNamespace(
+        key="gas", max_output_mw=750.0, ramp_up_latency=3, ramp_down_latency=3)
+    solar = SimpleNamespace(
+        key="solar", max_output_mw=100.0, ramp_up_latency=1, ramp_down_latency=1)
+    state = SimpleNamespace(population=200_000, sources=[gas, solar])
+    city = IsoCity(None)
+    city.prepare(viewport, state)
+
+    geom = build_transmission_geometry(city.transmission3d, city._origin)
+    assert len(geom["towers"]) >= len(city.transmission3d)
+    assert len(geom["conductors"]) == len(city.transmission3d) * 2
+    route_tower_points = sum(len(route["tower_points"]) for route in city.transmission3d)
+    assert len(geom["towers"]) == route_tower_points
+    by_route = {
+        (conductor["key"], conductor["substation_index"], conductor["arm"]): conductor
+        for conductor in geom["conductors"]
+    }
+    for route in city.transmission3d:
+        for arm, source_points in route["conductor_paths"].items():
+            conductor = by_route[(route["key"], route["substation_index"], arm)]
+            assert len(conductor["points"]) == len(source_points)
+            for source, world in (
+                (source_points[0], conductor["points"][0]),
+                (source_points[-1], conductor["points"][-1]),
+            ):
+                sx, sy = _project(np.array([*world, 0.0], dtype="f4"))
+                projected = (sx + city._origin[0], sy + city._origin[1])
+                assert np.allclose(projected, source, atol=1.0)
+
+
+def test_tower_billboards_use_shared_surface_and_offsets():
+    towers = [{"key": "gas", "substation_index": 0, "offset": (1.0, 0.0, 2.0)}]
+    billboards = build_tower_billboards(towers)
+    assert len(billboards) == 1
+    assert billboards[0]["offset"] == (1.0, 0.0, 2.0)
+    assert billboards[0]["surface"].get_width() > 0
+    assert billboards[0]["surface"].get_height() > 0
+
+
+def test_load_transmission_creates_releasable_resources():
+    from ui import terrain3d
+
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        geometry = {
+            "towers": [{"key": "gas", "substation_index": 0, "offset": (0.0, 0.0, 0.0)}],
+            "conductors": [{
+                "key": "gas", "substation_index": 0, "arm": -6,
+                "points": ((0.0, 0.0, 0.0), (3.2, 0.0, 0.0)),
+            }],
+        }
+        tx = load_transmission(ctx, prog, geometry)
+        assert tx["towers"]
+        assert tx["towers"][0].weather_role == terrain3d.WEATHER_BILLBOARD
+        assert tx["conductors"] is not None
+        assert tx["conductors"].weather_role == terrain3d.WEATHER_METAL
+        release_transmission(tx)
+    finally:
+        ctx.release()
+
+
+def test_load_transmission_does_not_draw_empty_conductors():
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        tx = load_transmission(ctx, prog, {"towers": [], "conductors": []})
+        assert tx["conductors"] is not None
+        assert tx["conductors"].instance_count == 0
+        release_transmission(tx)
+    finally:
+        ctx.release()
+
+
+def test_load_billboards_marks_meshes_unlit():
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        surf = pygame.Surface((8, 8), pygame.SRCALPHA)
+        surf.fill((255, 0, 0, 255))
+        meshes = load_billboards(ctx, prog, [{
+            "key": "test",
+            "offset": (0.0, 0.0, 0.0),
+            "width_world": 8 / PX_PER_UNIT,
+            "height_world": 8 / (PX_PER_UNIT * _VERTICAL_FORESHORTENING),
+            "surface": surf,
+        }])
+        assert meshes[0].unlit is True
+        for mesh in meshes:
+            mesh.release()
+    finally:
+        ctx.release()
+
+
+def test_billboard_renders_full_brightness_when_ambient_is_zero():
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+        surf.fill((255, 0, 0, 255))
+        billboards = [{
+            "key": "test",
+            "offset": (0.0, 0.0, 0.0),
+            "width_world": 16 / PX_PER_UNIT,
+            "height_world": 16 / (PX_PER_UNIT * _VERTICAL_FORESHORTENING),
+            "surface": surf,
+        }]
+        meshes = load_billboards(ctx, prog, billboards)
+        fbo = create_framebuffer(ctx, (64, 64))
+        draw(ctx, prog, {}, fbo, _FakeCamera(center=(0.0, 0.0), zoom=1.0),
+             billboard_meshes=meshes, ambient=0.0)
+        rgba, size = read_rgba(fbo)
+        pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
+        assert pixels[:, :, 0].max() >= 250
+        for mesh in meshes:
+            mesh.release()
+        fbo.release()
+    finally:
+        ctx.release()
+
+
+def test_unlit_billboard_still_receives_global_light_tint():
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+        surf.fill((255, 0, 0, 255))
+        billboards = [{
+            "key": "test",
+            "offset": (0.0, 0.0, 0.0),
+            "width_world": 16 / PX_PER_UNIT,
+            "height_world": 16 / (PX_PER_UNIT * _VERTICAL_FORESHORTENING),
+            "surface": surf,
+        }]
+        meshes = load_billboards(ctx, prog, billboards)
+        fbo = create_framebuffer(ctx, (64, 64))
+        draw(ctx, prog, {}, fbo, _FakeCamera(center=(0.0, 0.0), zoom=1.0),
+             billboard_meshes=meshes, ambient=0.0, light_tint=(0.5, 1.0, 1.0))
+        rgba, size = read_rgba(fbo)
+        pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
+        assert 110 <= int(pixels[:, :, 0].max()) <= 145
+        for mesh in meshes:
+            mesh.release()
+        fbo.release()
+    finally:
+        ctx.release()
+
+
+def test_draw_renders_transmission_conductor_pixels():
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog)
+        upload_instances(ctx, meshes, {})
+        geometry = {
+            "towers": [],
+            "conductors": [{
+                "key": "gas", "substation_index": 0, "arm": -6,
+                "points": ((-1.6, 0.0, 0.0), (1.6, 0.0, 0.0)),
+            }],
+        }
+        tx = load_transmission(ctx, prog, geometry)
+        fbo = create_framebuffer(ctx, (128, 128))
+        draw(ctx, prog, meshes, fbo, _FakeCamera(center=(0.0, 0.0), zoom=4.0),
+             transmission_meshes=tx)
+        rgba, size = read_rgba(fbo)
+        pixels = np.frombuffer(rgba, dtype="u1").reshape(size[1], size[0], 4)
+        background = np.array([25, 28, 33], dtype="u1")
+        assert np.any(np.abs(pixels[:, :, :3].astype("i2") - background.astype("i2")).sum(axis=2) > 20)
+        release_transmission(tx)
+    finally:
+        ctx.release()
+
+
+def test_draw_renders_transmission_conductors_above_terrain():
+    ctx = create_context()
+    try:
+        prog = create_program(ctx)
+        meshes = load_meshes(ctx, prog)
+        upload_instances(ctx, meshes, {"grass": np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4")})
+        camera = _FakeCamera(center=(0.0, 0.0), zoom=4.0)
+        base_fbo = create_framebuffer(ctx, (128, 128))
+        draw(ctx, prog, meshes, base_fbo, camera)
+        base_rgba, size = read_rgba(base_fbo)
+
+        geometry = {
+            "towers": [],
+            "conductors": [{
+                "key": "gas", "substation_index": 0, "arm": -6,
+                "points": ((-1.6, TRANSMISSION_CONDUCTOR_HEIGHT_WORLD, 0.0),
+                           (1.6, TRANSMISSION_CONDUCTOR_HEIGHT_WORLD, 0.0)),
+            }],
+        }
+        tx = load_transmission(ctx, prog, geometry)
+        tx_fbo = create_framebuffer(ctx, (128, 128))
+        draw(ctx, prog, meshes, tx_fbo, camera, transmission_meshes=tx)
+        tx_rgba, _ = read_rgba(tx_fbo)
+
+        base = np.frombuffer(base_rgba, dtype="u1").reshape(size[1], size[0], 4)
+        with_tx = np.frombuffer(tx_rgba, dtype="u1").reshape(size[1], size[0], 4)
+        diff = np.abs(with_tx[:, :, :3].astype("i2") - base[:, :, :3].astype("i2"))
+        assert np.any(diff.sum(axis=2) > 20)
+        release_transmission(tx)
+        base_fbo.release()
+        tx_fbo.release()
+    finally:
+        ctx.release()
+
+
+def test_conductor_strip_mesh_builds_quads_for_each_segment():
+    conductors = [{
+        "key": "gas",
+        "substation_index": 0,
+        "arm": -6,
+        "points": ((0.0, 0.0, 0.0), (3.2, 0.0, 0.0), (6.4, 0.0, 0.0)),
+    }]
+    pos, nrm, uv, idx, tex = conductor_strip_mesh(conductors)
+    assert pos.shape == (8, 3)      # two segments, four verts each
+    assert idx.shape == (4, 3)      # two triangles per segment
+    assert tex.shape == (1, 1, 4)
+
+
 def test_build_plant_billboards_from_a_real_city_layout():
     """Integration check mirroring
     test_build_instances_produces_road_instances_from_a_real_city_layout:
@@ -519,7 +1246,7 @@ def test_billboard_is_occluded_by_a_nearer_building_instance():
     ctx = create_context()
     try:
         prog = create_program(ctx)
-        camera = _FakeCamera(center=(-64.0, -64.0), zoom=1.0)
+        camera = _FakeCamera(center=(0.0, 0.0), zoom=1.0)
         axis = CAM_ROT[2]
 
         behind_count = _count_red_pixels(ctx, prog, tuple(-6.0 * axis), camera)

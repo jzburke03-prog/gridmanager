@@ -175,6 +175,27 @@ def test_main_and_capture_no_longer_draw_bottom_homes_label():
 
     assert ".draw_homes_label(" not in main_src
     assert ".draw_homes_label(" not in capture_src
+    assert "CAPTURE_TERRAIN3D" in capture_src
+    assert "GRIDMANAGER_TERRAIN3D" in capture_src
+    assert "terrain3d.lighting_for_state" in capture_src
+    assert ("load_transmission" in capture_src
+            or "build_transmission_geometry" in capture_src)
+
+
+def test_launcher_falls_back_to_current_interpreter_when_venv39_is_absent():
+    """Catch unconditional setup exit before trying installed current deps."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    launcher_src = (root / "run_game.py").read_text(encoding="utf-8")
+
+    assert "def _current_interpreter_has_deps" in launcher_src
+    assert "pygame" in launcher_src
+    assert "moderngl" in launcher_src
+    assert "numpy" in launcher_src
+    assert "def _run_with_current_interpreter" in launcher_src
+    assert "game_main.main()" in launcher_src
+    assert "if not os.path.exists(VENV_PY):\n        if os.name == \"nt\":" not in launcher_src
 
 
 def test_demand_chart_draws_pixel_monitor_frame_with_empty_history():
@@ -251,8 +272,9 @@ def test_baked_zoomed_out_frame_is_not_dominated_by_greenery():
     city.camera.zoom = 1
 
     sampled = greenish = 0
+    populated_kinds = ("urban_block", "campus", "voxel_bldg", "vroad", "pad")
     for (col, row), (kind, _extra) in city._tiles.items():
-        if kind not in ("urban_block", "campus"):
+        if kind not in populated_kinds:
             continue
         sx, sy = iso_xy(col, row)
         point = (round(sx + city._origin[0] + TW // 2),
@@ -525,6 +547,40 @@ def test_iso_city_layout_urban_core_with_restored_countryside():
     assert kinds.count("mountain") > 0
 
 
+def test_dense_downtown_footprint_is_bigger_and_not_a_circle():
+    from ui.iso_city import (DENSE_DOWNTOWN_COL_RADIUS,
+                             DENSE_DOWNTOWN_ROW_RADIUS,
+                             _dense_downtown_metric,
+                             _in_dense_downtown)
+
+    downtown = {
+        (col, row)
+        for col in range(-DENSE_DOWNTOWN_COL_RADIUS - 2,
+                         DENSE_DOWNTOWN_COL_RADIUS + 3)
+        for row in range(-DENSE_DOWNTOWN_ROW_RADIUS - 2,
+                         DENSE_DOWNTOWN_ROW_RADIUS + 3)
+        if _in_dense_downtown(col, row)
+    }
+    circle_radius = 28.0
+    circle_extra_axis = [
+        (col, row) for col, row in downtown
+        if math.hypot(col, row) > circle_radius and (abs(col) < 8 or abs(row) < 8)
+    ]
+    circle_trimmed_corners = [
+        (col, row)
+        for col in range(20, DENSE_DOWNTOWN_COL_RADIUS + 1)
+        for row in range(20, DENSE_DOWNTOWN_ROW_RADIUS + 1)
+        if _dense_downtown_metric(col, row) > 1.0
+        and not _in_dense_downtown(col, row)
+    ]
+
+    assert len(downtown) >= 2600
+    assert max(abs(col) for col, _row in downtown) >= 31
+    assert max(abs(row) for _col, row in downtown) >= 27
+    assert len(circle_extra_axis) >= 80
+    assert len(circle_trimmed_corners) >= 20
+
+
 def test_urban_renderer_budget_avoids_overpopulation_lag():
     viewport = pygame.Rect(0, 0, 1365, 900)
     city = IsoCity(None)
@@ -561,6 +617,28 @@ def test_power_plants_get_their_own_clear_floor():
         assert center == "pad", (site.key, center)               # stands on its floor
         assert "mountain" not in near, site.key                  # never on a slope
         assert near.count("pad") >= 12, (site.key, near.count("pad"))  # a real clearing
+
+
+def test_plants_and_switchyards_stay_outside_dense_metro_footprint():
+    from ui.iso_city import _in_dense_downtown
+
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    city = IsoCity(None)
+    city._layout(viewport, ILLUSTRATIVE_POPULATION,
+                 ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+
+    for site in city._plants:
+        pc, pr = round(site.col), round(site.row)
+        assert not any(
+            _in_dense_downtown(pc + dc, pr + dr)
+            for dc in range(-2, 3) for dr in range(-2, 3)
+        ), site.key
+
+    for swc, swr in city._sub_sites:
+        assert not any(
+            _in_dense_downtown(swc + dc, swr + dr)
+            for dc in range(-3, 4) for dr in range(-3, 4)
+        ), (swc, swr)
 
 
 def test_urban_road_objects_do_not_make_every_street_an_avenue():
@@ -619,13 +697,16 @@ def test_asset_buildings_stay_within_reasonable_tile_scale():
         assert spr.get_height() <= max_h
 
 
-def test_layout_reserves_city_center_sprites_near_downtown():
+def test_layout_places_dense_downtown_and_city_centers_near_core():
     city = IsoCity(None)
     city._layout(RECT, 200_000, ("gas",))
+    kinds = [kind for kind, _extra in city._tiles.values()]
+    assert kinds.count("voxel_bldg") > 20
+    assert kinds.count("vroad") > 20
     assert city._city_centers
     for col, row, _entry in city._city_centers:
-        assert abs(col - row) <= 8
-        assert abs(col + row) <= 8
+        assert abs(col - row) <= 10
+        assert abs(col + row) <= 10
         assert city._tiles[(col, row)][0] == "bldg"
 
 
@@ -1131,6 +1212,27 @@ def test_plants_is_publicly_readable():
     city.prepare(viewport, state)
     assert city.plants is city._plants
     assert len(city.plants) >= 1
+
+
+def test_transmission3d_snapshot_is_publicly_readable():
+    import pygame
+    from game_state import GameState
+    import scenarios
+    from ui.iso_city import IsoCity
+
+    pygame.init()
+    city = IsoCity(None)
+    rect = pygame.Rect(0, 0, 1400, 700)
+    state = GameState(scenarios.make_standard())
+    city.prepare(rect, state)
+
+    snapshot = city.transmission3d
+    assert isinstance(snapshot, tuple)
+    assert snapshot
+    first = snapshot[0]
+    assert set(first) == {"key", "substation_index", "tower_points", "conductor_paths"}
+    assert first["tower_points"]
+    assert set(first["conductor_paths"]) == {-6, 6}
 
 
 def test_freeplay_city_size_is_decoupled_from_grid_megawatts():

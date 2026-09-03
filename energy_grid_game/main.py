@@ -22,11 +22,9 @@ from audio import AudioManager
 
 BG_COLOR = (13, 17, 23)
 
-# Phase 1 stopgap: the 3D terrain layer renders correctly but is fully
-# hidden behind IsoCity's existing opaque 2D countryside sprites (a later
-# phase will stop drawing those so the 3D layer becomes visible), so it's
-# opt-in and OFF by default -- normal players pay none of its GPU/CPU cost
-# and don't need a working OpenGL driver until that later phase lands.
+# The 3D terrain layer is the default renderer for covered terrain/city
+# materials. GRIDMANAGER_TERRAIN3D remains as an explicit opt-out for systems
+# that cannot create the required OpenGL context.
 def _terrain3d_enabled():
     return terrain3d.is_enabled()
 
@@ -109,6 +107,7 @@ def main():
     terrain3d_key = None
     terrain3d_fbo = None
     terrain3d_plant_meshes = []
+    terrain3d_transmission_meshes = None
     if TERRAIN3D_ENABLED:
         try:
             gl_ctx = gl_context.create_context()
@@ -360,6 +359,10 @@ def main():
                     old_mesh.release()
                 terrain3d_plant_meshes = terrain3d.load_billboards(
                     gl_ctx, terrain3d_prog, terrain3d.build_plant_billboards(city.plants))
+                terrain3d.release_transmission(terrain3d_transmission_meshes)
+                terrain3d_transmission_meshes = terrain3d.load_transmission(
+                    gl_ctx, terrain3d_prog,
+                    terrain3d.build_transmission_geometry(city.transmission3d, city._origin))
                 terrain3d_key = city.layout_key
             if terrain3d_fbo is None or terrain3d_fbo.size != city_rect.size:
                 if terrain3d_fbo is not None:
@@ -371,7 +374,10 @@ def main():
                     terrain3d_fbo.release()
                 terrain3d_fbo = terrain3d.create_framebuffer(gl_ctx, city_rect.size)
             terrain3d.draw(gl_ctx, terrain3d_prog, terrain3d_meshes, terrain3d_fbo, city.camera,
-                            billboard_meshes=terrain3d_plant_meshes)
+                            billboard_meshes=terrain3d_plant_meshes,
+                            transmission_meshes=terrain3d_transmission_meshes,
+                            world_origin=city._origin,
+                            **terrain3d.lighting_for_state(state))
             rgba, size = terrain3d.read_rgba(terrain3d_fbo)
             # Rendered here (right after city.prepare, off the pygame surface) but
             # blitted onto `frame` later, right before city.draw -- clear_frame(frame)
@@ -507,6 +513,8 @@ def main():
 
     if state is not None:
         state.persist_high_score()
+    if terrain3d_transmission_meshes is not None:
+        terrain3d.release_transmission(terrain3d_transmission_meshes)
     pygame.quit()
     sys.exit()
 

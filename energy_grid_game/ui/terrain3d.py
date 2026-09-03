@@ -18,16 +18,72 @@ entirely by compositing on the GPU instead of blitting into a pygame
 Surface.
 """
 import os
+import json
 from pathlib import Path
 
 import numpy as np
 
+from ui import time_of_day
+from ui import voxel_terrain
+from ui import voxel_city as vc
+
 
 def is_enabled():
-    """Whether the opt-in 3D terrain pipeline is active. Shared by main.py
+    """Whether the default 3D terrain pipeline is active. Shared by main.py
     (decides whether to create a GL context at all) and ui.iso_city (decides
     whether to skip drawing 2D tiles that now have a 3D equivalent)."""
-    return os.environ.get("GRIDMANAGER_TERRAIN3D", "").strip().lower() in ("1", "true", "yes")
+    value = os.environ.get("GRIDMANAGER_TERRAIN3D")
+    if value is None:
+        return True
+    return value.strip().lower() not in ("0", "false", "no", "off")
+
+
+def covers_tile_kind(kind):
+    return kind in (
+        "grass", "farm", "tree", "water", "mountain", "road",
+        "vroad",
+    )
+
+
+def lighting_for_state(state):
+    """Derive conservative 3D lighting controls from sim time and weather."""
+    day = time_of_day.daylight(getattr(state, "sim_hour", 12.0))
+    date = getattr(state, "date", None)
+    season = (
+        voxel_terrain.season_of(date.month)
+        if date is not None and getattr(date, "month", None) is not None
+        else "summer"
+    )
+    event = getattr(state, "active_event", None)
+    event_kind = getattr(event, "kind", None)
+
+    ambient = 0.34 + 0.30 * day
+    night_tint = np.array((0.58, 0.66, 0.84), dtype="f4")
+    daylight_tint = np.array((1.0, 1.0, 1.0), dtype="f4")
+    tint = night_tint + (daylight_tint - night_tint) * day
+    if season == "winter":
+        tint *= np.array((0.95, 0.98, 1.0), dtype="f4")
+
+    snow_mix = 0.10 if season == "winter" else 0.0
+    wet_mix = 0.0
+    ice_mix = 0.0
+    if event_kind == "RAIN":
+        wet_mix = 0.32
+    if event_kind == "SNOW":
+        snow_mix = max(snow_mix, 0.34)
+        wet_mix = 0.10
+    elif event_kind == "ICE_STORM":
+        snow_mix = max(snow_mix, 0.24)
+        wet_mix = 0.22
+        ice_mix = 0.30
+
+    return {
+        "ambient": float(max(0.0, min(1.0, ambient))),
+        "light_tint": tuple(float(max(0.0, min(1.0, c))) for c in tint),
+        "snow_mix": float(max(0.0, min(1.0, snow_mix))),
+        "wet_mix": float(max(0.0, min(1.0, wet_mix))),
+        "ice_mix": float(max(0.0, min(1.0, ice_mix))),
+    }
 
 
 TW, TH = 16, 8  # MUST match ui.iso_city.TW/TH
@@ -35,6 +91,30 @@ TW, TH = 16, 8  # MUST match ui.iso_city.TW/TH
 MATERIALS = ("grass", "farm", "tree", "water", "mountain")
 ROAD_MATERIALS = ("straight", "corner", "tee", "cross")
 BUILDING_MATERIALS = ("house", "shop", "block", "midrise", "tower")
+WEATHER_TERRAIN = 0
+WEATHER_ROAD = 1
+WEATHER_BUILDING = 2
+WEATHER_BILLBOARD = 3
+WEATHER_METAL = 4
+DOWNTOWN_BUILDING_MATERIALS = (
+    "downtown_house_a", "downtown_house_b",
+    "downtown_market_a", "downtown_school_a",
+    "downtown_mall_a", "downtown_department_a",
+    "downtown_apartment_a", "downtown_apartment_b",
+    "downtown_office_a", "downtown_office_b", "downtown_office_c",
+)
+DOWNTOWN_BUILDING_MATERIAL_FOR_SLUG = {
+    "house": ("downtown_house_a", "downtown_house_b"),
+    "market": ("downtown_market_a",),
+    "school": ("downtown_school_a",),
+    "mall": ("downtown_mall_a",),
+    "department_store": ("downtown_department_a",),
+    "apartment": ("downtown_apartment_a", "downtown_apartment_b"),
+    "building_2": ("downtown_office_a", "downtown_department_a"),
+    "building_3": ("downtown_office_b", "downtown_mall_a"),
+    "building_4": ("downtown_office_c", "downtown_apartment_b"),
+    "building_5": ("downtown_office_a", "downtown_office_b"),
+}
 
 # Derived by rotating each baked mesh's default (yaw=0) open "arms" -- read
 # from its .npz `pos` bounding box -- against the neighbor directions
@@ -72,6 +152,16 @@ ROAD_ROLE_TO_SHAPE_YAW = {
     "cross": ("cross", 0.0),
 }
 
+
+def downtown_vroad_shape_yaw(col, row):
+    if col % vc.BLOCK == 0 and row % vc.BLOCK == 0:
+        return "cross", 0.0
+    if col % vc.BLOCK == 0:
+        return "straight", 0.0
+    if row % vc.BLOCK == 0:
+        return "straight", 90.0
+    return "cross", 0.0
+
 # Baked ground meshes (energy_grid_game/assets/terrain3d/*.npz) each span
 # -1.6..+1.6 on X and Z -- a 3.2-unit footprint -- so instances must be
 # spaced 3.2 world units apart per tile to avoid overlapping their
@@ -81,6 +171,317 @@ ROAD_ROLE_TO_SHAPE_YAW = {
 TILE_SPACING = 3.2
 
 MESH_DIR = Path(__file__).resolve().parents[1] / "assets" / "terrain3d"
+KIT_SOURCE_ROOT = Path("newassets") / "terrain" / "gltf"
+KIT_ARTIFACT_ROOT = MESH_DIR / "kit"
+KIT_MANIFEST = MESH_DIR / "kit_manifest.json"
+
+KIT_SEMANTIC_SOURCES = {
+    "terrain.grass.base": "forest/forest-1",
+    "terrain.grass.alt": "forest/forest-2",
+    "terrain.farm.base": "dirt/dirt-1",
+    "terrain.farm.alt": "dirt/dirt-2",
+    "terrain.water.base": "water/water-1",
+    "terrain.water.alt": "water/water-2",
+    "terrain.mountain.base": "mountains/mountain-1",
+    "terrain.mountain.cave": "mountains/mountain-cave",
+    "terrain.desert.base": "desert/desert-1",
+    "terrain.city.base": "city/city-1",
+    "road.straight": "roads/road-straight-1",
+    "road.corner": "roads/road-edgy-curve-1",
+    "road.tee": "roads/road-edgy-3-way-crossing-1",
+    "road.cross": "roads/road-edgy-4-way-crossing-1",
+    "track.straight": "tracks/track-straight",
+    "track.curve": "tracks/track-curve",
+    "track.switch": "tracks/track-switch-1",
+    "track.road_intersection": "tracks/track-road-intersection-1",
+    "prop.tree": "trees/tree-1",
+    "prop.bush": "bushes/bush-1",
+    "prop.stone": "stones/stone-1",
+    "prop.cactus": "cactus/cactus-1",
+    "prop.wood": "wood/wood-1",
+    "prop.bones": "bones/bones-1",
+    "city.building": "buildings/city-building",
+    "edge.forest_water.side": "forestwater/forest-water-side-1",
+    "edge.dirt_water.side": "dirtwater/dirt-water-side-1",
+    "edge.desert_water.side": "desertwater/desert-water-side-1",
+    "edge.city_water.side": "citywater/city-water-side-1",
+}
+
+TERRAIN_VARIANT_SOURCES = {
+    "grass": (
+        ("grass", KIT_SEMANTIC_SOURCES["terrain.grass.base"]),
+        ("grass_2", "forest/forest-2"),
+        ("grass_3", "forest/forest-3"),
+        ("grass_4", "forest/forest-4"),
+        ("grass_water_side", KIT_SEMANTIC_SOURCES["edge.forest_water.side"]),
+    ),
+    "farm": (
+        ("farm", KIT_SEMANTIC_SOURCES["terrain.farm.base"]),
+        ("farm_2", "dirt/dirt-2"),
+        ("farm_3", "dirt/dirt-3"),
+        ("farm_4", "dirt/dirt-4"),
+        ("farm_water_side", KIT_SEMANTIC_SOURCES["edge.dirt_water.side"]),
+    ),
+    "water": (
+        ("water", KIT_SEMANTIC_SOURCES["terrain.water.base"]),
+        ("water_2", "water/water-2"),
+        ("water_3", "water/water-3"),
+        ("water_4", "water/water-4"),
+    ),
+    "mountain": (
+        ("mountain", KIT_SEMANTIC_SOURCES["terrain.mountain.base"]),
+        ("mountain_side_1", "mountains/mountain-side-1"),
+        ("mountain_side_2", "mountains/mountain-side-2"),
+        ("mountain_edge_1", "mountains/mountain-edge-inner-1"),
+        ("mountain_cave", KIT_SEMANTIC_SOURCES["terrain.mountain.cave"]),
+    ),
+    "tree": (
+        ("tree", KIT_SEMANTIC_SOURCES["prop.tree"]),
+        ("tree_2", "trees/tree-2"),
+        ("tree_3", "trees/tree-3"),
+        ("tree_4", "trees/tree-4"),
+    ),
+}
+
+ROAD_VARIANT_SOURCES = {
+    "straight": (
+        ("straight", KIT_SEMANTIC_SOURCES["road.straight"]),
+        ("straight_2", "roads/road-straight-2"),
+        ("straight_3", "roads/road-straight-3"),
+        ("straight_4", "roads/road-straight-4"),
+    ),
+    "corner": (
+        ("corner", KIT_SEMANTIC_SOURCES["road.corner"]),
+        ("corner_2", "roads/road-edgy-curve-2"),
+        ("corner_3", "roads/road-edgy-curve-3"),
+        ("corner_4", "roads/road-edgy-curve-4"),
+    ),
+    "tee": (
+        ("tee", KIT_SEMANTIC_SOURCES["road.tee"]),
+        ("tee_2", "roads/road-edgy-3-way-crossing-2"),
+        ("tee_3", "roads/road-rounded-3-way-crossing-1"),
+        ("tee_4", "roads/road-rounded-3-way-crossing-2"),
+    ),
+    "cross": (
+        ("cross", KIT_SEMANTIC_SOURCES["road.cross"]),
+        ("cross_2", "roads/road-edgy-4-way-crossing-2"),
+        ("cross_3", "roads/road-rounded-4-way-crossing-1"),
+        ("cross_4", "roads/road-rounded-4-way-crossing-2"),
+    ),
+}
+
+DECORATION_VARIANT_SOURCES = {
+    "grass": (
+        ("bush_1", "bushes/bush-1"),
+        ("bush_2", "bushes/bush-2"),
+        ("bush_3", "bushes/bush-3"),
+        ("stone_1", "stones/stone-1"),
+        ("stone_2", "stones/stone-2"),
+    ),
+    "farm": (
+        ("wood_1", "wood/wood-1"),
+        ("wood_2", "wood/wood-2"),
+        ("stone_3", "stones/stone-3"),
+        ("bones_1", "bones/bones-1"),
+        ("cactus_1", "cactus/cactus-1"),
+    ),
+    "tree": (
+        ("bush_1", "bushes/bush-1"),
+        ("bush_2", "bushes/bush-2"),
+        ("stone_4", "stones/stone-4"),
+    ),
+    "mountain": (
+        ("stone_4", "stones/stone-4"),
+        ("stone_5", "stones/stone-5"),
+        ("stone_6", "stones/stone-6"),
+        ("bones_2", "bones/bones-2"),
+    ),
+}
+
+KIT_ACTIVE_MESH_SOURCES = {
+    name: source
+    for variants in (
+        tuple(TERRAIN_VARIANT_SOURCES.values())
+        + tuple(ROAD_VARIANT_SOURCES.values())
+        + tuple(DECORATION_VARIANT_SOURCES.values())
+    )
+    for name, source in variants
+}
+
+TERRAIN_RUNTIME_MESHES = tuple(
+    name for variants in TERRAIN_VARIANT_SOURCES.values() for name, _source in variants
+)
+ROAD_RUNTIME_MESHES = tuple(
+    name for variants in ROAD_VARIANT_SOURCES.values() for name, _source in variants
+)
+DECORATION_RUNTIME_MESHES = tuple(dict(
+    (name, source)
+    for variants in DECORATION_VARIANT_SOURCES.values()
+    for name, source in variants
+))
+BUILDING_RUNTIME_MESHES = BUILDING_MATERIALS + DOWNTOWN_BUILDING_MATERIALS
+RUNTIME_MESH_NAMES = (
+    TERRAIN_RUNTIME_MESHES + ROAD_RUNTIME_MESHES
+    + DECORATION_RUNTIME_MESHES + BUILDING_RUNTIME_MESHES
+)
+
+DOWNTOWN_BUILDING_SPECS = {
+    "downtown_house_a": ("house", 0.92, 0.84, (0.92, 1.00, 0.92)),
+    "downtown_house_b": ("shop", 0.86, 0.78, (1.02, 0.93, 0.86)),
+    "downtown_market_a": ("shop", 1.02, 0.92, (1.05, 0.98, 0.82)),
+    "downtown_school_a": ("block", 1.08, 1.00, (0.84, 0.92, 1.06)),
+    "downtown_mall_a": ("midrise", 1.18, 1.12, (1.03, 0.93, 0.98)),
+    "downtown_department_a": ("midrise", 1.46, 1.06, (0.94, 0.98, 1.06)),
+    "downtown_apartment_a": ("midrise", 1.82, 1.00, (0.90, 0.96, 1.08)),
+    "downtown_apartment_b": ("midrise", 2.22, 0.94, (1.00, 0.94, 0.88)),
+    "downtown_office_a": ("midrise", 1.62, 0.96, (0.82, 0.90, 1.08)),
+    "downtown_office_b": ("midrise", 2.10, 0.90, (0.88, 1.00, 1.00)),
+    "downtown_office_c": ("midrise", 2.62, 0.84, (1.04, 0.96, 0.90)),
+}
+
+_KIT_MANIFEST_CACHE = None
+
+
+def load_kit_manifest(manifest_path=KIT_MANIFEST):
+    global _KIT_MANIFEST_CACHE
+    manifest_path = Path(manifest_path)
+    if _KIT_MANIFEST_CACHE is not None and manifest_path == KIT_MANIFEST:
+        return _KIT_MANIFEST_CACHE
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    artifact_root = raw.get("artifact_root", KIT_ARTIFACT_ROOT.as_posix())
+    if not Path(artifact_root).is_absolute():
+        artifact_root = Path(__file__).resolve().parents[2] / artifact_root
+    artifact_root = str(Path(artifact_root))
+    assets = {entry["key"]: dict(entry) for entry in raw["assets"]}
+    for key, entry in assets.items():
+        entry["key"] = key
+        entry["_artifact_root"] = artifact_root
+    if manifest_path == KIT_MANIFEST:
+        _KIT_MANIFEST_CACHE = assets
+    return assets
+
+
+def kit_artifact_path(entry, artifact_root=KIT_ARTIFACT_ROOT):
+    root = Path(entry.get("_artifact_root", artifact_root))
+    return root / entry["artifact"]
+
+
+def available_kit_semantics(manifest_path=KIT_MANIFEST):
+    manifest = load_kit_manifest(manifest_path)
+    return {
+        semantic: key
+        for semantic, key in KIT_SEMANTIC_SOURCES.items()
+        if key in manifest and kit_artifact_path(manifest[key]).exists()
+    }
+
+
+def _load_kit_npz(source_key, manifest=None):
+    manifest = manifest or load_kit_manifest()
+    return np.load(kit_artifact_path(manifest[source_key])), source_key
+
+
+def _mesh_arrays(data, y_scale=1.0, xz_scale=1.0, tint=(1.0, 1.0, 1.0)):
+    pos = np.array(data["pos"], dtype="f4", copy=True)
+    pos[:, 0] *= float(xz_scale)
+    pos[:, 1] *= float(y_scale)
+    pos[:, 2] *= float(xz_scale)
+    tex = np.array(data["tex"], dtype="f4", copy=True)
+    tex[:, :, :3] *= np.array(tint, dtype="f4")
+    tex = np.clip(tex, 0, 255).astype("u1")
+    return pos, data["nrm"], data["uv"], data["idx"], tex
+
+
+def _legacy_runtime_mesh_spec(mesh_dir, name):
+    for kind, variants in TERRAIN_VARIANT_SOURCES.items():
+        if any(name == variant_name for variant_name, _source in variants):
+            scale = (3.1, 2.5) if kind == "tree" else None
+            return mesh_dir / f"{kind}.npz", WEATHER_TERRAIN, scale, None
+    for shape, variants in ROAD_VARIANT_SOURCES.items():
+        if any(name == variant_name for variant_name, _source in variants):
+            return mesh_dir / "roads" / f"{shape}.npz", WEATHER_ROAD, None, None
+    if name in DECORATION_RUNTIME_MESHES:
+        base = "tree" if name.startswith(("bush_", "cactus_")) else "mountain"
+        return mesh_dir / f"{base}.npz", WEATHER_TERRAIN, (3.2, 2.8), None
+    if name in BUILDING_MATERIALS:
+        return mesh_dir / "buildings" / f"{name}.npz", WEATHER_BUILDING, None, None
+    if name in DOWNTOWN_BUILDING_SPECS:
+        base, y_scale, xz_scale, tint = DOWNTOWN_BUILDING_SPECS[name]
+        return (
+            mesh_dir / "buildings" / f"{base}.npz",
+            WEATHER_BUILDING,
+            (y_scale, xz_scale),
+            tint,
+        )
+    raise KeyError(f"no legacy mesh mapping for runtime mesh {name!r}")
+
+
+def _tile_hash(col, row, salt=0):
+    n = (int(col) * 374761393 + int(row) * 668265263 + int(salt) * 1442695041) & 0xFFFFFFFF
+    n = (n ^ (n >> 13)) * 1274126177 & 0xFFFFFFFF
+    return n & 0xFFFFFFFF
+
+
+def _neighbor_has_kind(tiles, col, row, wanted):
+    for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        if tiles.get((col + dc, row + dr), (None,))[0] == wanted:
+            return True
+    return False
+
+
+def _variant_name(variants, col, row, salt=0):
+    return variants[_tile_hash(col, row, salt) % len(variants)][0]
+
+
+def terrain_mesh_name(kind, col, row, tiles):
+    if kind == "grass" and _neighbor_has_kind(tiles, col, row, "water"):
+        return "grass_water_side"
+    if kind == "farm" and _neighbor_has_kind(tiles, col, row, "water"):
+        return "farm_water_side"
+    return _variant_name(TERRAIN_VARIANT_SOURCES[kind], col, row, 11)
+
+
+def road_mesh_name(shape, col, row):
+    return _variant_name(ROAD_VARIANT_SOURCES[shape], col, row, 23)
+
+
+def downtown_building_mesh_name(slug, col, row):
+    variants = DOWNTOWN_BUILDING_MATERIAL_FOR_SLUG.get(slug)
+    if variants is None:
+        raise ValueError(f"unrecognized downtown building slug: {slug!r}")
+    return variants[_tile_hash(col, row, 37) % len(variants)]
+
+
+def terrain_height_world(kind, extra, col, row):
+    if kind == "water":
+        return -0.06
+    if kind == "mountain":
+        elev_px = float(extra or 0.0)
+        return 0.18 + min(1.7, elev_px * 0.045)
+    if kind in ("grass", "farm", "tree"):
+        coarse = ((_tile_hash(col // 3, row // 3, 41) & 0xFF) / 255.0)
+        fine = ((_tile_hash(col, row, 43) & 0xFF) / 255.0)
+        return 0.03 + 0.12 * coarse + 0.04 * fine
+    return 0.0
+
+
+def decoration_instance(kind, col, row, base_y):
+    variants = DECORATION_VARIANT_SOURCES.get(kind)
+    if not variants:
+        return None
+    chance = {
+        "grass": 6,
+        "farm": 7,
+        "tree": 12,
+        "mountain": 3,
+    }[kind]
+    roll = _tile_hash(col, row, 53) % 100
+    if roll >= chance:
+        return None
+    name = _variant_name(variants, col, row, 59)
+    yaw = float((_tile_hash(col, row, 61) % 4) * 90)
+    jitter_x = (((_tile_hash(col, row, 67) & 0xFF) / 255.0) - 0.5) * 0.70
+    jitter_z = (((_tile_hash(col, row, 71) & 0xFF) / 255.0) - 0.5) * 0.70
+    return name, float(base_y) + 0.34, jitter_x, jitter_z, yaw
 
 
 def build_instances(tiles):
@@ -114,22 +515,34 @@ def build_instances(tiles):
     that's established Phase 1 behavior for tile kinds this module simply
     doesn't render.
     """
-    buckets = {m: [] for m in MATERIALS + ROAD_MATERIALS + BUILDING_MATERIALS}
+    buckets = {m: [] for m in RUNTIME_MESH_NAMES}
     for (col, row), (kind, extra) in tiles.items():
         x = -float(row) * TILE_SPACING
         z = float(col) * TILE_SPACING
         if kind in MATERIALS:
-            buckets[kind].append((x, 0.0, z, 0.0))
+            mesh_name = terrain_mesh_name(kind, col, row, tiles)
+            y = terrain_height_world(kind, extra, col, row)
+            buckets[mesh_name].append((x, y, z, 0.0))
+            prop = decoration_instance(kind, col, row, y)
+            if prop is not None:
+                prop_name, prop_y, jitter_x, jitter_z, prop_yaw = prop
+                buckets[prop_name].append((x + jitter_x, prop_y, z + jitter_z, prop_yaw))
         elif kind == "road":
             role = getattr(extra, "role", None)
             if role not in ROAD_ROLE_TO_SHAPE_YAW:
                 raise ValueError(f"unrecognized road role: {role!r}")
             shape, yaw = ROAD_ROLE_TO_SHAPE_YAW[role]
-            buckets[shape].append((x, 0.0, z, yaw))
+            buckets[road_mesh_name(shape, col, row)].append((x, 0.0, z, yaw))
+        elif kind == "vroad":
+            shape, yaw = downtown_vroad_shape_yaw(col, row)
+            buckets[road_mesh_name(shape, col, row)].append((x, 0.0, z, yaw))
         elif kind == "urban_block":
             archetype = extra.buildings[0]
             if archetype not in BUILDING_MATERIALS:
                 raise ValueError(f"unrecognized building archetype: {archetype!r}")
+            buckets[archetype].append((x, 0.0, z, 0.0))
+        elif kind == "voxel_bldg":
+            archetype = downtown_building_mesh_name(extra, col, row)
             buckets[archetype].append((x, 0.0, z, 0.0))
     return {
         m: np.array(offsets, dtype="f4").reshape(-1, 4)
@@ -265,6 +678,44 @@ def billboard_quad(width_world, height_world, basis=None):
 # aspect ratio matches the source sprite's pixel aspect ratio, same as its
 # width does.
 _VERTICAL_FORESHORTENING = np.cos(_AX)
+TRANSMISSION_CONDUCTOR_SCREEN_LIFT_PX = 16.0
+TRANSMISSION_CONDUCTOR_HEIGHT_WORLD = (
+    TRANSMISSION_CONDUCTOR_SCREEN_LIFT_PX / (PX_PER_UNIT * _VERTICAL_FORESHORTENING)
+)
+
+
+_TOWER_SURFACE = None
+
+
+def tower_billboard_surface():
+    global _TOWER_SURFACE
+    if _TOWER_SURFACE is None:
+        surf = pygame.Surface((24, 42), pygame.SRCALPHA)
+        steel = (126, 132, 142, 255)
+        dark = (54, 60, 68, 255)
+        x, y, h = 12, 38, 34
+        pygame.draw.line(surf, dark, (x - 5, y), (x, y - h), 1)
+        pygame.draw.line(surf, dark, (x + 5, y), (x, y - h), 1)
+        pygame.draw.line(surf, steel, (x - 3, y), (x, y - h + 1), 1)
+        for yy in (y - 7, y - 16, y - 25):
+            pygame.draw.line(surf, steel, (x - 8, yy), (x + 8, yy), 1)
+            pygame.draw.line(surf, (164, 168, 176, 255), (x - 8, yy), (x - 8, yy + 3), 1)
+            pygame.draw.line(surf, (164, 168, 176, 255), (x + 8, yy), (x + 8, yy + 3), 1)
+        pygame.draw.line(surf, steel, (x, y - h), (x, y - h - 3), 1)
+        _TOWER_SURFACE = surf
+    return _TOWER_SURFACE
+
+
+def build_tower_billboards(towers):
+    surface = tower_billboard_surface()
+    w, h = surface.get_size()
+    return [{
+        "key": tower["key"],
+        "offset": tower["offset"],
+        "width_world": w / PX_PER_UNIT,
+        "height_world": h / (PX_PER_UNIT * _VERTICAL_FORESHORTENING),
+        "surface": surface,
+    } for tower in towers]
 
 
 def build_plant_billboards(plants):
@@ -287,6 +738,99 @@ def build_plant_billboards(plants):
             "surface": site.sprite,
         })
     return billboards
+
+
+def screen_px_to_world(screen_point, origin, y_world=0.0):
+    """Convert an IsoCity screen-space point back into terrain3d world X/Y/Z.
+
+    This is the inverse of iso_xy plus build_instances' world convention:
+    sx = (col - row) * TW/2 + origin_x
+    sy = (col + row) * TH/2 + origin_y
+    x = -row * TILE_SPACING
+    z = col * TILE_SPACING
+    """
+    sx = (float(screen_point[0]) - float(origin[0])) / (TW / 2.0)
+    sy = (float(screen_point[1]) - float(origin[1])) / (TH / 2.0)
+    col = (sx + sy) / 2.0
+    row = (sy - sx) / 2.0
+    return (-row * TILE_SPACING, float(y_world), col * TILE_SPACING)
+
+
+def build_transmission_geometry(snapshot, origin):
+    towers = []
+    conductors = []
+    for route in snapshot:
+        key = route["key"]
+        sub_index = route["substation_index"]
+        for point in route["tower_points"]:
+            towers.append({
+                "key": key,
+                "substation_index": sub_index,
+                "offset": screen_px_to_world(point, origin),
+            })
+        for arm, points in route["conductor_paths"].items():
+            world_points = tuple(
+                screen_px_to_world(
+                    (point[0], point[1] + TRANSMISSION_CONDUCTOR_SCREEN_LIFT_PX),
+                    origin,
+                    y_world=TRANSMISSION_CONDUCTOR_HEIGHT_WORLD,
+                )
+                for point in points
+            )
+            if len(world_points) >= 2:
+                conductors.append({
+                    "key": key,
+                    "substation_index": sub_index,
+                    "arm": arm,
+                    "points": world_points,
+                })
+    return {"towers": towers, "conductors": conductors}
+
+
+def conductor_strip_mesh(conductors, width_world=0.16):
+    verts = []
+    normals = []
+    uvs = []
+    indices = []
+    normal = np.array([0.0, 1.0, 0.0], dtype="f4")
+    half = width_world / 2.0
+    for conductor in conductors:
+        pts = conductor["points"]
+        for a, b in zip(pts, pts[1:]):
+            a = np.array(a, dtype="f4")
+            b = np.array(b, dtype="f4")
+            direction = b - a
+            length = np.linalg.norm(direction[[0, 2]])
+            if length <= 1e-6:
+                continue
+            side = np.array([-direction[2], 0.0, direction[0]], dtype="f4")
+            side = side / max(np.linalg.norm(side), 1e-6) * half
+            base = len(verts)
+            verts.extend([a - side, a + side, b + side, b - side])
+            normals.extend([normal, normal, normal, normal])
+            uvs.extend([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)])
+            indices.extend([(base, base + 1, base + 2), (base, base + 2, base + 3)])
+    if not verts:
+        verts = [np.zeros(3, dtype="f4")] * 4
+        normals = [normal] * 4
+        uvs = [(0.0, 0.0)] * 4
+        indices = [(0, 1, 2), (0, 2, 3)]
+    tex = np.array([[[116, 122, 132, 255]]], dtype="u1")
+    return (np.array(verts, dtype="f4"),
+            np.array(normals, dtype="f4"),
+            np.array(uvs, dtype="f4"),
+            np.array(indices, dtype="i4"),
+            tex)
+
+
+def _has_conductor_segments(conductors):
+    for conductor in conductors:
+        pts = conductor["points"]
+        for a, b in zip(pts, pts[1:]):
+            direction = np.array(b, dtype="f4") - np.array(a, dtype="f4")
+            if np.linalg.norm(direction[[0, 2]]) > 1e-6:
+                return True
+    return False
 
 
 def _surface_to_rgba_array(surface):
@@ -357,17 +901,45 @@ _FRAGMENT_SHADER = """
 uniform sampler2D tex;
 uniform vec3 light_dir;
 uniform float ambient;
+uniform vec3 light_tint;
+uniform float snow_mix;
+uniform float wet_mix;
+uniform float ice_mix;
+uniform bool unlit;
+uniform int weather_role;
 in vec2 v_uv;
 in vec3 v_normal;
 out vec4 f_color;
 void main() {
     vec4 texel = texture(tex, v_uv);
     if (texel.a < 0.01) discard;
-    vec3 n = normalize(v_normal);
-    float lambert = max(dot(n, light_dir), 0.0);
-    float banded = floor(lambert * 3.0) / 3.0;
-    float bright = ambient + (1.0 - ambient) * banded;
-    f_color = vec4(texel.rgb * bright, texel.a);
+    float bright = 1.0;
+    if (!unlit) {
+        vec3 n = normalize(v_normal);
+        float lambert = max(dot(n, light_dir), 0.0);
+        float banded = floor(lambert * 3.0) / 3.0;
+        bright = ambient + (1.0 - ambient) * banded;
+    }
+    float role_snow_mix = snow_mix;
+    if (weather_role == 1) {
+        role_snow_mix *= 0.45;
+    } else if (weather_role == 3) {
+        role_snow_mix *= 0.35;
+    } else if (weather_role == 4) {
+        role_snow_mix *= 0.60;
+    }
+    vec3 snow = vec3(0.88, 0.93, 0.98);
+    vec3 rgb = mix(texel.rgb, snow, clamp(role_snow_mix, 0.0, 1.0));
+    if (weather_role == 1 || weather_role == 4) {
+        float gray = dot(rgb, vec3(0.299, 0.587, 0.114));
+        vec3 wet_rgb = mix(rgb, vec3(gray), 0.55) * 0.72;
+        rgb = mix(rgb, wet_rgb, clamp(wet_mix, 0.0, 1.0));
+    }
+    if (weather_role == 1 || weather_role == 2 || weather_role == 4) {
+        vec3 ice_rgb = vec3(0.76, 0.86, 0.96);
+        rgb = mix(rgb, ice_rgb, clamp(ice_mix, 0.0, 1.0) * 0.35);
+    }
+    f_color = vec4(clamp(rgb * bright * light_tint, 0.0, 1.0), texel.a);
 }
 """
 
@@ -377,7 +949,12 @@ def create_program(ctx):
 
 
 class GLMesh:
-    def __init__(self, ctx, prog, pos, nrm, uv, idx, tex):
+    def __init__(self, ctx, prog, pos, nrm, uv, idx, tex, unlit=False,
+                 weather_role=WEATHER_TERRAIN, source_key=None):
+        self.prog = prog
+        self.unlit = bool(unlit)
+        self.weather_role = int(weather_role)
+        self.source_key = source_key
         verts = np.hstack([pos, nrm, uv]).astype("f4")
         self.vbo = ctx.buffer(verts.tobytes())
         self.ibo = ctx.buffer(idx.astype("i4").tobytes())
@@ -402,6 +979,8 @@ class GLMesh:
 
     def render(self):
         if self.instance_count:
+            self.prog["unlit"].value = self.unlit
+            self.prog["weather_role"].value = self.weather_role
             self.texture.use(0)
             self.vao.render(instances=self.instance_count)
 
@@ -420,19 +999,46 @@ class GLMesh:
 
 
 def load_meshes(ctx, prog, mesh_dir=MESH_DIR):
+    mesh_dir = Path(mesh_dir)
     meshes = {}
-    for material in MATERIALS:
-        data = np.load(mesh_dir / f"{material}.npz")
-        meshes[material] = GLMesh(ctx, prog, data["pos"], data["nrm"],
-                                    data["uv"], data["idx"], data["tex"])
-    for shape in ROAD_MATERIALS:
-        data = np.load(mesh_dir / "roads" / f"{shape}.npz")
-        meshes[shape] = GLMesh(ctx, prog, data["pos"], data["nrm"],
-                                 data["uv"], data["idx"], data["tex"])
-    for archetype in BUILDING_MATERIALS:
-        data = np.load(mesh_dir / "buildings" / f"{archetype}.npz")
-        meshes[archetype] = GLMesh(ctx, prog, data["pos"], data["nrm"],
-                                     data["uv"], data["idx"], data["tex"])
+    kit_manifest = load_kit_manifest() if mesh_dir == MESH_DIR else None
+
+    if kit_manifest is not None:
+        for name, source_key in KIT_ACTIVE_MESH_SOURCES.items():
+            data, _source_key = _load_kit_npz(source_key, kit_manifest)
+            weather_role = WEATHER_ROAD if name in ROAD_RUNTIME_MESHES else WEATHER_TERRAIN
+            if name in DECORATION_RUNTIME_MESHES:
+                arrays = _mesh_arrays(data, y_scale=3.2, xz_scale=2.8)
+            elif name.startswith("tree"):
+                arrays = _mesh_arrays(data, y_scale=3.1, xz_scale=2.5)
+            else:
+                arrays = (data["pos"], data["nrm"], data["uv"], data["idx"], data["tex"])
+            meshes[name] = GLMesh(ctx, prog, *arrays,
+                                  weather_role=weather_role,
+                                  source_key=_source_key)
+        for archetype in BUILDING_MATERIALS:
+            data = np.load(mesh_dir / "buildings" / f"{archetype}.npz")
+            meshes[archetype] = GLMesh(ctx, prog, data["pos"], data["nrm"],
+                                       data["uv"], data["idx"], data["tex"],
+                                       weather_role=WEATHER_BUILDING)
+        for name, (base, y_scale, xz_scale, tint) in DOWNTOWN_BUILDING_SPECS.items():
+            data = np.load(mesh_dir / "buildings" / f"{base}.npz")
+            meshes[name] = GLMesh(ctx, prog, *_mesh_arrays(data, y_scale, xz_scale, tint),
+                                  weather_role=WEATHER_BUILDING,
+                                  source_key=f"legacy-building/{base}")
+        return meshes
+
+    for name in RUNTIME_MESH_NAMES:
+        mesh_path, weather_role, scale, tint = _legacy_runtime_mesh_spec(mesh_dir, name)
+        data = np.load(mesh_path)
+        if scale is None and tint is None:
+            arrays = (data["pos"], data["nrm"], data["uv"], data["idx"], data["tex"])
+        else:
+            y_scale, xz_scale = scale or (1.0, 1.0)
+            arrays = _mesh_arrays(data, y_scale, xz_scale, tint or (1.0, 1.0, 1.0))
+        meshes[name] = GLMesh(ctx, prog, *arrays,
+                              weather_role=weather_role,
+                              source_key=f"legacy/{mesh_path.as_posix()}")
     return meshes
 
 
@@ -447,10 +1053,33 @@ def load_billboards(ctx, prog, billboards):
     for b in billboards:
         pos, nrm, uv, idx = billboard_quad(b["width_world"], b["height_world"])
         tex_data = _surface_to_rgba_array(b["surface"])
-        mesh = GLMesh(ctx, prog, pos, nrm, uv, idx, tex_data)
+        mesh = GLMesh(ctx, prog, pos, nrm, uv, idx, tex_data, unlit=True,
+                      weather_role=WEATHER_BILLBOARD)
         mesh.set_instances(np.array([[*b["offset"], 0.0]], dtype="f4"))
         meshes.append(mesh)
     return meshes
+
+
+def load_transmission(ctx, prog, geometry):
+    tower_meshes = load_billboards(ctx, prog, build_tower_billboards(geometry["towers"]))
+    pos, nrm, uv, idx, tex = conductor_strip_mesh(geometry["conductors"])
+    conductor_mesh = GLMesh(ctx, prog, pos, nrm, uv, idx, tex,
+                            weather_role=WEATHER_METAL)
+    instances = (np.array([[0.0, 0.0, 0.0, 0.0]], dtype="f4")
+                 if _has_conductor_segments(geometry["conductors"])
+                 else np.zeros((0, 4), dtype="f4"))
+    conductor_mesh.set_instances(instances)
+    return {"towers": tower_meshes, "conductors": conductor_mesh}
+
+
+def release_transmission(transmission_meshes):
+    if not transmission_meshes:
+        return
+    for mesh in transmission_meshes.get("towers", []):
+        mesh.release()
+    conductor = transmission_meshes.get("conductors")
+    if conductor is not None:
+        conductor.release()
 
 
 def upload_instances(ctx, meshes, instances):
@@ -468,7 +1097,9 @@ def create_framebuffer(ctx, size):
 
 
 def draw(ctx, prog, meshes, fbo, camera, px_per_unit=PX_PER_UNIT, ambient=0.55,
-         billboard_meshes=None):
+         light_tint=(1.0, 1.0, 1.0), snow_mix=0.0, wet_mix=0.0, ice_mix=0.0,
+         billboard_meshes=None, transmission_meshes=None, world_origin=(0.0, 0.0),
+         viewport_center=None):
     """Draws the material meshes, then any billboard_meshes (e.g. from
     load_billboards()) in the SAME pass -- same fbo, same depth state, no
     ctx.clear() between the two groups -- so billboards are properly
@@ -483,12 +1114,32 @@ def draw(ctx, prog, meshes, fbo, camera, px_per_unit=PX_PER_UNIT, ambient=0.55,
     prog["px_per_unit"].value = float(px_per_unit)
     prog["zoom"].value = float(camera.zoom)
     prog["img_size"].value = (float(fbo.size[0]), float(fbo.size[1]))
-    prog["origin"].value = (float(camera.center[0]), float(camera.center[1]))
+    if viewport_center is None:
+        viewport_center = (fbo.size[0] / 2.0, fbo.size[1] / 2.0)
+    origin = (
+        float(camera.center[0]) * float(camera.zoom)
+        - float(viewport_center[0])
+        - float(world_origin[0]) * float(camera.zoom),
+        float(camera.center[1]) * float(camera.zoom)
+        - float(viewport_center[1])
+        - float(world_origin[1]) * float(camera.zoom),
+    )
+    prog["origin"].value = origin
     prog["tex"].value = 0
     prog["light_dir"].value = tuple(LIGHT.astype("f4"))
     prog["ambient"].value = float(ambient)
+    prog["light_tint"].value = tuple(float(c) for c in light_tint)
+    prog["snow_mix"].value = float(snow_mix)
+    prog["wet_mix"].value = float(wet_mix)
+    prog["ice_mix"].value = float(ice_mix)
     for mesh in meshes.values():
         mesh.render()
+    if transmission_meshes:
+        conductor = transmission_meshes.get("conductors")
+        if conductor is not None:
+            conductor.render()
+        for mesh in transmission_meshes.get("towers", []):
+            mesh.render()
     for mesh in (billboard_meshes or []):
         mesh.render()
 

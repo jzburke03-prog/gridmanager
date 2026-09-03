@@ -313,6 +313,45 @@ ARTERIAL_SPACING = 12   # every Nth street is an arterial: wider, lamp-lit
 # now a narrow readability buffer; 1x should frame the playable city/grid set,
 # not a small town floating in open countryside.
 MAX_EXTENT = 0.58
+DENSE_DOWNTOWN_COL_RADIUS = 32
+DENSE_DOWNTOWN_ROW_RADIUS = 28
+
+
+def _dense_downtown_metric(col, row):
+    x = abs(float(col)) / DENSE_DOWNTOWN_COL_RADIUS
+    y = abs(float(row)) / DENSE_DOWNTOWN_ROW_RADIUS
+    return (x ** 4 + y ** 4) ** 0.25
+
+
+def _dense_downtown_edge(col, row):
+    block_col = int(col) // vc.BLOCK
+    block_row = int(row) // vc.BLOCK
+    n = (block_col * 374761393 + block_row * 668265263 + 0x5A17) & 0xFFFFFFFF
+    n = (n ^ (n >> 13)) * 1274126177 & 0xFFFFFFFF
+    return 0.97 + ((n & 0xFF) / 255.0) * 0.08
+
+
+def _in_dense_downtown(col, row):
+    return _dense_downtown_metric(col, row) <= _dense_downtown_edge(col, row)
+
+
+def _dense_downtown_clear(col, row, radius):
+    return not any(
+        _in_dense_downtown(round(col) + dc, round(row) + dr)
+        for dc in range(-radius, radius + 1)
+        for dr in range(-radius, radius + 1)
+    )
+
+
+def _push_outside_dense_downtown(col, row, radius=3):
+    col, row = float(col), float(row)
+    for _ in range(32):
+        if _dense_downtown_clear(col, row, radius):
+            return col, row
+        length = max(1.0, math.hypot(col, row))
+        col += (col / length) * 2.0
+        row += (row / length) * 2.0
+    return col, row
 
 
 def iso_xy(col, row):
@@ -1763,6 +1802,7 @@ class IsoCity:
         self._vehicles = []
         self._road_neighbors = {}
         self._transmission_routes = []
+        self._transmission3d = ()
         self._transformers = []
         self._distribution_pulses = []
         self._service_pulses = []
@@ -1878,21 +1918,22 @@ class IsoCity:
                 for dr in range(-campus.radius, campus.radius + 1):
                     if abs(dc) + abs(dr) <= campus.radius + 1:
                         tiles[(cc + dc, rr + dr)] = ("campus", campus.key)
-        # Dense voxel downtown: a street grid with one town-building per block,
-        # apartment towers downtown grading out to houses/shops. This overrides the
-        # central tiles and is the visible city. The road network still exists
-        # underneath for transmission routing.
-        dt_r = 24
-        for bx in range(-dt_r, dt_r + 1):
-            for by in range(-dt_r, dt_r + 1):
-                if math.hypot(bx, by) > dt_r:
+        # Dense voxel downtown: a broad, superellipse metro footprint with
+        # slight block-level edge variation. It is intentionally not a circle:
+        # downtown should read like a planned city grid pushing into the plant
+        # ring, with less arbitrary countryside buffer.
+        for bx in range(-DENSE_DOWNTOWN_COL_RADIUS - vc.BLOCK,
+                        DENSE_DOWNTOWN_COL_RADIUS + vc.BLOCK + 1):
+            for by in range(-DENSE_DOWNTOWN_ROW_RADIUS - vc.BLOCK,
+                            DENSE_DOWNTOWN_ROW_RADIUS + vc.BLOCK + 1):
+                if not _in_dense_downtown(bx, by):
                     continue
                 if tiles.get((bx, by), (None,))[0] == "road":
                     continue                      # keep real roads (traffic drives them)
                 if vc.is_street(bx, by):
                     tiles[(bx, by)] = ("vroad", None)
                 elif vc.is_building(bx, by):
-                    slug = vc.building_for(bx, by, math.hypot(bx, by) / dt_r)
+                    slug = vc.building_for(bx, by, min(1.0, _dense_downtown_metric(bx, by)))
                     tiles[(bx, by)] = ("voxel_bldg", slug)
                 else:
                     tiles[(bx, by)] = ("pad", None)
@@ -1969,7 +2010,10 @@ class IsoCity:
         # clear ring between the city edge and the plant ring: one front-centre,
         # one top-centre. Transmission terminates here without crossing the city;
         # distribution pulses inward from here into downtown.
-        self._sub_sites = [(21, 21), (-19, -19)]
+        self._sub_sites = [
+            (DENSE_DOWNTOWN_COL_RADIUS + 8, DENSE_DOWNTOWN_ROW_RADIUS + 6),
+            (-(DENSE_DOWNTOWN_COL_RADIUS + 8), -(DENSE_DOWNTOWN_ROW_RADIUS + 6)),
+        ]
         self._switchyard_tile = self._sub_sites[0]
         self._tiles = tiles
         self._buildings = buildings
@@ -1988,7 +2032,7 @@ class IsoCity:
                         continue
                     t = (pc + dc, pr + dr)
                     k = self._tiles.get(t, (None,))[0]
-                    if k in ("mountain", "farm", "grass", "tree", "park", None):
+                    if k in ("mountain", "farm", "grass", "tree", "water", "park", None):
                         self._tiles[t] = ("pad", None)
         # clear a flat pad for each switchyard (override even city tiles so the
         # yard sits in its own clearing, readable as a hub)
@@ -2069,6 +2113,7 @@ class IsoCity:
                 u = u_max * ring * math.cos(a)
                 v = v_max * ring * math.sin(a)
                 col, row = (u + v) / 2.0, (v - u) / 2.0
+            col, row = _push_outside_dense_downtown(col, row, radius=3)
             sx, sy = iso_xy(col, row)
             # Clamp the actual artwork bounds, not a guessed radius. Solar is
             # intentionally asymmetric around its logical origin; the old
@@ -2303,7 +2348,7 @@ class IsoCity:
 
         for (col, row) in sorted(self._tiles, key=lambda t: t[0] + t[1]):
             kind, extra = self._tiles[(col, row)]
-            if terrain3d.is_enabled() and kind in ("grass", "farm", "tree", "water", "mountain", "road"):
+            if terrain3d.is_enabled() and terrain3d.covers_tile_kind(kind):
                 continue
             sx, sy = iso_xy(col, row)
             sx += ox
@@ -2500,6 +2545,7 @@ class IsoCity:
         for i in self._subs_used:
             _substation(grid, *self._sub_screen[i])
         conductor_paths = {}
+        transmission3d = []
         for key, i, path in self._routes:
             arm_paths = {-6: [], 6: []}
             route_towers = []
@@ -2525,15 +2571,27 @@ class IsoCity:
             # towers are occasional punctuation -- never a lattice wall.
             acc = 1e9
             first_tower = True
+            pylon_points = []
             for j, (tx, ty) in enumerate(route_towers):
                 if j > 0:
                     acc += math.hypot(tx - route_towers[j - 1][0], ty - route_towers[j - 1][1])
                 if acc >= 150 or j == len(route_towers) - 1 or first_tower:
                     # a BOLD tower at the plant end (start), then sparse towers
                     _pylon(grid, int(tx), int(ty), h=30 if first_tower else 22)
+                    pylon_points.append((tx, ty))
                     first_tower = False
                     acc = 0.0
             conductor_paths[(key, i)] = arm_paths
+            transmission3d.append({
+                "key": key,
+                "substation_index": i,
+                "tower_points": tuple((float(x), float(y)) for x, y in pylon_points),
+                "conductor_paths": {
+                    arm: tuple((float(x), float(y)) for x, y in pts)
+                    for arm, pts in arm_paths.items()
+                },
+            })
+        self._transmission3d = tuple(transmission3d)
         # small flat junction markers at every connection point, drawn last so
         # they sit on top of the conductors and substation kit
         for i in self._subs_used:
@@ -2722,6 +2780,11 @@ class IsoCity:
     def plants(self):
         """Read-only view of the current plant placements: list[PlantSite]."""
         return self._plants
+
+    @property
+    def transmission3d(self):
+        """Read-only 3D transmission geometry snapshot built during bake."""
+        return self._transmission3d
 
     def prepare(self, rect, state):
         """Ensure camera, world layers, and plant markers exist for this frame.
