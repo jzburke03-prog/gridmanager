@@ -16,17 +16,20 @@ import pygame
 pygame.init()
 pygame.display.set_mode((1, 1))     # sprite baking needs a video surface
 
+from ui import assets, urban_blocks
 from ui.iso_city import (AWAKE_MIN, FEEDER_SIZE,
                          ILLUSTRATIVE_POPULATION, Camera, IsoCity,
-                         PlantSite, TW, TH,
+                         PLANT_ART_SCALE, PlantSite, TW, TH,
                          _Vehicle,
                          _fire_reach, _ignite_rate, _max_fires,
-                         _draw_plant_live, _plant_static_sprite, _vehicle_sprite,
+                         _road_is_avenue,
+                         _asset_building, _draw_plant_live, _draw_plant_static,
+                         _plant_static_sprite, _vehicle_sprite,
                          activity_level, fire_overload_level, lit_fraction,
                          parabolic_peak, served_fraction, state_population,
                          traffic_level, voltage_overload_level,
                          detail_levels_for_zoom, required_world_size,
-                         vehicle_density_for_zoom, distribution_level)
+                         vehicle_density_for_zoom, iso_xy)
 from ui.iso_city import (street_route, cooling_tower_width, solar_panel_layout,
                          gas_cc_train_layout, centered_ellipse_rect,
                          solar_lot_polygon)
@@ -35,6 +38,10 @@ from ui.time_of_day import daylight
 from ui.plant_pins import PIN_W, PlantPins
 from ui.atmosphere import AtmosphereLayer, sample_atmosphere
 from ui.hud import HUD, hud_hit_test, hud_panel_rects
+from ui.gradient_border import RED
+from ui.urban_blocks import UrbanBlock, UrbanRoad, build_urban_layout, nearest_road_tile
+from ui.urban_render import (draw_municipal_civic, draw_urban_block, draw_urban_road,
+                             draw_utility_campus_base)
 from game_state import GameState
 from sources.base_source import SourceStatus
 import scenarios
@@ -73,8 +80,10 @@ def test_region_world_size_covers_minimum_zoom_with_overscan():
                      pygame.Rect(0, 0, 1400, 680),
                      pygame.Rect(0, 0, 1800, 500)):
         width, height = required_world_size(viewport)
-        assert width >= viewport.width + 100
-        assert height >= viewport.height + 50
+        assert width >= math.ceil(viewport.width * 1.03)
+        assert height >= math.ceil(viewport.height * 1.03)
+        assert width <= math.ceil(viewport.width * 1.06)
+        assert height <= math.ceil(viewport.height * 1.06)
 
         world = pygame.Rect(0, 0, width, height)
         camera = Camera(world.center, zoom=1)
@@ -111,6 +120,94 @@ def test_hud_draws_panel_across_the_old_gaps():
     hud.draw(frame, state, layout)
     seam = (layout["left"].right, layout["outer"].top + 8)
     assert frame.get_at(seam)[:3] != world
+
+
+def test_hud_warning_vignette_stays_on_edges_at_compact_sizes():
+    hud = HUD(pygame.font.Font(None, 16), pygame.font.Font(None, 13),
+              pygame.font.Font(None, 24), pygame.font.Font(None, 40))
+    frame = pygame.Surface((300, 200), pygame.SRCALPHA)
+    hud._draw_vignette(frame, RED, severity=1.0)
+    assert frame.get_at((150, 100)).a == 0
+    assert frame.get_at((2, 100)).a > 0
+
+
+def test_homes_out_status_uses_green_zero_amber_warning_red_majority():
+    from ui.hud import _homes_out_status
+
+    assert _homes_out_status(0, 1000)[0] == "0"
+    assert _homes_out_status(250, 1000)[0] == "0"
+
+    amber_value, amber_color = _homes_out_status(600, 2000)
+    assert amber_value == "600"
+    assert amber_color == (240, 170, 80)
+
+    red_value, red_color = _homes_out_status(1200, 2000)
+    assert red_value == "1,200"
+    assert red_color == (230, 90, 90)
+
+
+def test_hud_draw_promotes_homes_without_power_number():
+    from ui.hud import _homes_out_status
+
+    width, height = 1000, 680
+    font = pygame.font.Font(None, 18)
+    hud = HUD(font, font, pygame.font.Font(None, 28), pygame.font.Font(None, 44))
+    state = GameState(scenarios.make_standard())
+    for source in state.sources:
+        source.set_handle(0.0)
+        source.actual_pct = 0.0
+
+    surface = pygame.Surface((width, height), pygame.SRCALPHA)
+    hud.draw(surface, state, hud_panel_rects(width, height))
+
+    value, color = _homes_out_status(state.homes_without_power, state.homes_total)
+    assert value == f"{state.homes_without_power:,.0f}"
+    assert color == (230, 90, 90)
+    assert surface.get_bounding_rect().width > 0
+
+
+def test_main_and_capture_no_longer_draw_bottom_homes_label():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    main_src = (root / "main.py").read_text(encoding="utf-8")
+    capture_src = (root / "tools" / "capture_moments.py").read_text(encoding="utf-8")
+
+    assert ".draw_homes_label(" not in main_src
+    assert ".draw_homes_label(" not in capture_src
+    assert "CAPTURE_TERRAIN3D" in capture_src
+    assert "GRIDMANAGER_TERRAIN3D" in capture_src
+    assert "terrain3d.lighting_for_state" in capture_src
+    assert ("load_transmission" in capture_src
+            or "build_transmission_geometry" in capture_src)
+
+
+def test_launcher_falls_back_to_current_interpreter_when_venv39_is_absent():
+    """Catch unconditional setup exit before trying installed current deps."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    launcher_src = (root / "run_game.py").read_text(encoding="utf-8")
+
+    assert "def _current_interpreter_has_deps" in launcher_src
+    assert "pygame" in launcher_src
+    assert "moderngl" in launcher_src
+    assert "numpy" in launcher_src
+    assert "def _run_with_current_interpreter" in launcher_src
+    assert "game_main.main()" in launcher_src
+    assert "if not os.path.exists(VENV_PY):\n        if os.name == \"nt\":" not in launcher_src
+
+
+def test_demand_chart_draws_pixel_monitor_frame_with_empty_history():
+    from ui.demand_chart import DemandChart
+
+    surface = pygame.Surface((300, 170), pygame.SRCALPHA)
+    chart = DemandChart(pygame.Rect(0, 0, 300, 170), pygame.font.Font(None, 14))
+
+    chart.draw(surface, 12.0, [], [], 900.0, 500.0, 1200.0)
+
+    assert surface.get_at((8, 1)).a > 0
+    assert surface.get_at((150, 20)).a > 0
 
 
 def test_zoom_levels_reveal_additive_detail():
@@ -165,6 +262,35 @@ def test_baked_region_covers_the_full_stage_at_one_x():
                   (0, viewport.bottom - 1),
                   (viewport.right - 1, viewport.bottom - 1)):
         assert frame.get_at(point) != sentinel
+
+
+def test_baked_zoomed_out_frame_is_not_dominated_by_greenery():
+    viewport = pygame.Rect(0, 0, 1000, 460)
+    city = IsoCity(None)
+    city._bake(viewport, ILLUSTRATIVE_POPULATION,
+               ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+    city.camera.zoom = 1
+
+    sampled = greenish = 0
+    populated_kinds = ("urban_block", "campus", "voxel_bldg", "vroad", "pad")
+    for (col, row), (kind, _extra) in city._tiles.items():
+        if kind not in populated_kinds:
+            continue
+        sx, sy = iso_xy(col, row)
+        point = (round(sx + city._origin[0] + TW // 2),
+                 round(sy + city._origin[1] + TH // 2))
+        if not city._world_rect.collidepoint(point):
+            continue
+        r, g, b, a = city._base_day.get_at(point)
+        if a == 0:
+            continue
+        sampled += 1
+        greenish += g > r * 1.12 and g > b * 1.12
+
+    assert sampled > 120
+    # The 2026-08-03 elevation grows the illustrative city and its civic
+    # greenery; the city is still clearly built-up, not a park (< 20% greenish).
+    assert greenish / sampled < 0.20
 
 
 def test_atmosphere_is_stable_and_describes_world_response():
@@ -248,8 +374,404 @@ def test_plant_static_surfaces_are_local_not_world_sized():
                 "hydro", "generic"):
         sprite, offset = _plant_static_sprite(key, random.Random(1))
         assert sprite.get_bounding_rect().size == sprite.get_size()
-        assert sprite.get_width() < 220 and sprite.get_height() < 170
+        assert sprite.get_width() <= 360 and sprite.get_height() <= 255
         assert offset[0] <= 0 or offset[1] <= 0
+
+
+def test_iso_manifest_exposes_buildings_plants_and_city_center():
+    from ui import assets
+    manifest = assets.iso_manifest()
+    assert {"buildings", "city_center", "plants"} <= set(manifest)
+    assert {"house", "shop", "block", "midrise", "tower"} <= set(manifest["buildings"])
+    assert {"nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro", "generic"} <= set(manifest["plants"])
+    assert manifest["city_center"]
+
+
+def test_urban_iso_manifest_exposes_roads_municipal_and_details():
+    from ui import assets
+    manifest = assets.iso_manifest()
+    assert {"roads", "municipal", "details", "block_palettes"} <= set(manifest)
+    assert {"straight_ne", "straight_nw", "cross", "tee_ne", "corner_ne"} <= set(manifest["roads"])
+    assert {"police_station", "hospital", "fire_station", "school"} <= set(manifest["municipal"])
+    assert {"pavement", "parking", "street_tree", "service_yard"} <= set(manifest["details"])
+    for family in ("roads", "municipal", "details"):
+        for entries in manifest[family].values():
+            if isinstance(entries, dict):
+                entries = [entries]
+            assert entries
+            for entry in entries:
+                sprite = assets.iso_sprite(entry["file"])
+                assert sprite.get_bounding_rect().width > 0
+                assert sprite.get_bounding_rect().height > 0
+
+
+def test_urban_asset_helpers_return_manifest_families():
+    from ui import assets
+    road = assets.iso_road_entries("cross")[0]
+    civic = assets.iso_municipal_entries("hospital")[0]
+    detail = assets.iso_detail_entries("parking")[0]
+    palette = assets.iso_block_palette("mixed")
+
+    assert road["file"].startswith("roads/")
+    assert civic["file"].startswith("municipal/")
+    assert detail["file"].startswith("details/")
+    assert "shop" in palette
+
+    for entry in (road, civic, detail):
+        sprite = assets.iso_sprite(entry["file"])
+        assert sprite.get_masks()[3] != 0
+
+
+def test_urban_road_draws_paved_iso_tile_not_grass():
+    surface = pygame.Surface((120, 80), pygame.SRCALPHA)
+    road = UrbanRoad(0, 0, "cross", True)
+    draw_urban_road(surface, 50, 30, road)
+    bounds = surface.get_bounding_rect()
+    assert bounds.width >= 40
+    sample = surface.get_at((58, 34))[:3]
+    assert sample[0] in range(35, 130)
+    assert sample[1] in range(35, 130)
+    assert sample[2] in range(35, 130)
+
+
+def test_urban_block_draws_varied_paved_city_content():
+    surface = pygame.Surface((180, 120), pygame.SRCALPHA)
+    block = UrbanBlock(0, 0, "mixed", "urban", 17, 0.05,
+                       ("house", "shop", "block"))
+    rects = draw_urban_block(surface, 70, 40, block, random.Random(4))
+    bounds = surface.get_bounding_rect()
+    assert len(rects) >= 2
+    assert bounds.width >= 40
+    assert bounds.height >= 24
+    colors = {surface.get_at((x, y))[:3]
+              for x in range(0, 180, 12) for y in range(0, 120, 12)
+              if surface.get_at((x, y)).a}
+    assert len(colors) >= 5
+
+
+def test_utility_campus_base_is_large_paved_not_green():
+    surface = pygame.Surface((220, 160), pygame.SRCALPHA)
+    bounds = draw_utility_campus_base(surface, 100, 52, 3)
+    assert bounds.width >= 80
+    assert bounds.height >= 40
+    assert surface.get_at(bounds.center).a > 0
+
+
+def test_municipal_civic_blits_manifest_sprite():
+    surface = pygame.Surface((180, 130), pygame.SRCALPHA)
+    rect = draw_municipal_civic(surface, 90, 52, "hospital", random.Random(6))
+    assert rect.width > 0
+    assert rect.height > 0
+    assert surface.get_bounding_rect().contains(rect)
+
+
+def test_urban_layout_is_road_first_and_low_greenery():
+    layout = build_urban_layout(pygame.Rect(0, 0, 1365, 900),
+                                ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+    assert len(layout.roads) > len(layout.green_tiles) * 6
+    assert len(layout.blocks) >= 90
+    assert len(layout.blocks) <= 220
+    assert len(layout.green_tiles) <= max(12, len(layout.blocks) // 8)
+    assert {"core", "mixed", "civic", "industrial", "utility"} <= {
+        block.district for block in layout.blocks
+    }
+
+
+def test_urban_layout_places_all_generators_in_city_edge_campuses():
+    fleet = ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro")
+    layout = build_urban_layout(pygame.Rect(0, 0, 1365, 900), fleet)
+    assert set(layout.campuses) == set(fleet)
+    for key, campus in layout.campuses.items():
+        assert campus.district == "utility"
+        assert campus.radius >= 2
+        nearby_road_count = sum(
+            1 for pos in layout.roads
+            if abs(pos[0] - round(campus.col)) + abs(pos[1] - round(campus.row)) <= 5
+        )
+        assert nearby_road_count >= 3, (key, nearby_road_count)
+
+
+def test_urban_layout_caps_blocks_with_balanced_city_coverage():
+    layout = build_urban_layout(
+        pygame.Rect(0, 0, 1365, 900),
+        ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"),
+    )
+    blocks = layout.blocks
+    minimum_per_side = len(blocks) // 3
+    assert sum(block.col < 0 for block in blocks) >= minimum_per_side
+    assert sum(block.col > 0 for block in blocks) >= minimum_per_side
+    assert sum(block.row < 0 for block in blocks) >= minimum_per_side
+    assert sum(block.row > 0 for block in blocks) >= minimum_per_side
+    assert layout.buildable_tiles == {(block.col, block.row) for block in blocks}
+
+
+def test_urban_layout_selection_is_deterministic_for_its_seed():
+    rect = pygame.Rect(0, 0, 1365, 900)
+    fleet = ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro")
+    first = build_urban_layout(rect, fleet, seed=17)
+    repeated = build_urban_layout(rect, fleet, seed=17)
+    changed = build_urban_layout(rect, fleet, seed=18)
+
+    assert first == repeated
+    assert first.blocks != changed.blocks
+
+
+def test_urban_layout_preserves_civic_anchors_during_balanced_selection():
+    layout = build_urban_layout(
+        pygame.Rect(0, 0, 1365, 900),
+        ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"),
+        seed=3,
+    )
+
+    assert layout.civic
+    assert set(layout.civic) <= layout.buildable_tiles
+
+
+def test_iso_city_layout_urban_core_with_restored_countryside():
+    # The 2026-08-03 voxel-map elevation intentionally RESTORES the countryside
+    # the road-network layout had stopped generating (city no longer floats on a
+    # black void) and adds edge mountains, while keeping the urban core.
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    city = IsoCity(None)
+    city._layout(viewport, ILLUSTRATIVE_POPULATION,
+                 ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+    kinds = [kind for kind, _extra in city._tiles.values()]
+    # dense voxel downtown (block grid) is the visible city; roads survive under it
+    assert kinds.count("road") > 50
+    assert kinds.count("voxel_bldg") > 20
+    assert hasattr(city, "_urban_layout")
+    assert len(city._buildings) <= 260
+    # countryside is restored: the surround is filled with cheap ground tiles
+    assert kinds.count("farm") + kinds.count("grass") + kinds.count("tree") > 200
+    # and edge mountains ring the map
+    assert kinds.count("mountain") > 0
+
+
+def test_dense_downtown_footprint_is_bigger_and_not_a_circle():
+    from ui.iso_city import (DENSE_DOWNTOWN_COL_RADIUS,
+                             DENSE_DOWNTOWN_ROW_RADIUS,
+                             _dense_downtown_metric,
+                             _in_dense_downtown)
+
+    downtown = {
+        (col, row)
+        for col in range(-DENSE_DOWNTOWN_COL_RADIUS - 2,
+                         DENSE_DOWNTOWN_COL_RADIUS + 3)
+        for row in range(-DENSE_DOWNTOWN_ROW_RADIUS - 2,
+                         DENSE_DOWNTOWN_ROW_RADIUS + 3)
+        if _in_dense_downtown(col, row)
+    }
+    circle_radius = 28.0
+    circle_extra_axis = [
+        (col, row) for col, row in downtown
+        if math.hypot(col, row) > circle_radius and (abs(col) < 8 or abs(row) < 8)
+    ]
+    circle_trimmed_corners = [
+        (col, row)
+        for col in range(20, DENSE_DOWNTOWN_COL_RADIUS + 1)
+        for row in range(20, DENSE_DOWNTOWN_ROW_RADIUS + 1)
+        if _dense_downtown_metric(col, row) > 1.0
+        and not _in_dense_downtown(col, row)
+    ]
+
+    assert len(downtown) >= 2600
+    assert max(abs(col) for col, _row in downtown) >= 31
+    assert max(abs(row) for _col, row in downtown) >= 27
+    assert len(circle_extra_axis) >= 80
+    assert len(circle_trimmed_corners) >= 20
+
+
+def test_urban_renderer_budget_avoids_overpopulation_lag():
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    city = IsoCity(None)
+    city._layout(viewport, ILLUSTRATIVE_POPULATION,
+                 ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+
+    kinds = [kind for kind, _extra in city._tiles.values()]
+    assert urban_blocks.MAX_URBAN_BLOCKS == 220
+    assert urban_blocks.MAX_GREEN_TILES == 40
+    assert len(city._urban_layout.blocks) <= 220
+    assert len(city._buildings) <= 520
+    assert kinds.count("campus") <= 220
+    assert kinds.count("road") <= 3200
+    # Countryside now fills the frame (restored), but it is CHEAP voxel slabs
+    # baked once -- the perf budget that matters is the expensive urban stock
+    # (blocks/buildings/campuses), bounded above. Cap the cheap ground tiles
+    # generously only to catch a runaway fill loop.
+    assert sum(kinds.count(kind) for kind in ("farm", "grass", "tree")) < 20000
+
+
+def test_power_plants_get_their_own_clear_floor():
+    # 2026-08-03 elevation: each generating tech is spread onto its OWN distinct
+    # bearing in the clear ring and carved onto a flat "pad" floor -- no plant on
+    # a mountainside, in the trees, or piled into the city/campus.
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    city = IsoCity(None)
+    city._layout(viewport, ILLUSTRATIVE_POPULATION,
+                 ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+    for site in city._plants:
+        near = [city._tiles.get((round(site.col) + dc, round(site.row) + dr),
+                                ("", None))[0]
+                for dc in range(-2, 3) for dr in range(-2, 3)]
+        center = city._tiles.get((round(site.col), round(site.row)), ("", None))[0]
+        assert center == "pad", (site.key, center)               # stands on its floor
+        assert "mountain" not in near, site.key                  # never on a slope
+        assert near.count("pad") >= 12, (site.key, near.count("pad"))  # a real clearing
+
+
+def test_plants_and_switchyards_stay_outside_dense_metro_footprint():
+    from ui.iso_city import _in_dense_downtown
+
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    city = IsoCity(None)
+    city._layout(viewport, ILLUSTRATIVE_POPULATION,
+                 ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+
+    for site in city._plants:
+        pc, pr = round(site.col), round(site.row)
+        assert not any(
+            _in_dense_downtown(pc + dc, pr + dr)
+            for dc in range(-2, 3) for dr in range(-2, 3)
+        ), site.key
+
+    for swc, swr in city._sub_sites:
+        assert not any(
+            _in_dense_downtown(swc + dc, swr + dr)
+            for dc in range(-3, 4) for dr in range(-3, 4)
+        ), (swc, swr)
+
+
+def test_urban_road_objects_do_not_make_every_street_an_avenue():
+    local = UrbanRoad(1, 2, "straight_ne", False)
+    avenue = UrbanRoad(4, 0, "cross", True)
+
+    assert not _road_is_avenue(local)
+    assert _road_is_avenue(avenue)
+    assert not _road_is_avenue(False)
+    assert _road_is_avenue(True)
+
+
+def test_iso_sprite_loads_with_alpha_and_bounds():
+    from ui import assets
+    entry = assets.iso_plant_entry("nuclear")
+    sprite = assets.iso_sprite(entry["file"])
+    assert sprite.get_masks()[3] != 0
+    assert sprite.get_bounding_rect().width > 0
+    assert sprite.get_bounding_rect().height > 0
+
+
+def test_manifest_plant_static_surfaces_are_local_and_metadata_backed():
+    for key in ("nuclear", "coal", "gas", "peaker", "solar", "wind",
+                "hydro", "generic"):
+        sprite, offset = _plant_static_sprite(key, random.Random(1))
+        assert sprite.get_bounding_rect().size == sprite.get_size()
+        assert sprite.get_width() <= 360 and sprite.get_height() <= 255
+        assert offset[0] <= 0
+        assert offset[1] <= 0
+
+
+def test_curated_power_plant_sprites_are_easy_to_read_at_map_scale():
+    for key in ("nuclear", "coal", "gas", "peaker", "solar", "wind"):
+        sprite, _offset = _plant_static_sprite(key, random.Random(1))
+        assert max(sprite.get_size()) >= 100
+
+
+def test_manifest_switchyard_anchor_overrides_default_takeoff():
+    site = PlantSite("solar", 0, 0, 100, 80, 0.0)
+    site.switchyard_offset = (17, 9)
+    assert site.switchyard_anchor() == (117, 89)
+
+
+def test_asset_building_returns_structure_and_light_surface():
+    for tier in ("house", "shop", "block", "midrise", "tower"):
+        spr, lights = _asset_building(tier, random.Random(3))
+        assert spr.get_width() > 0 and spr.get_height() > 0
+        assert lights.get_size() == spr.get_size()
+        assert spr.get_bounding_rect().width > 0
+
+
+def test_asset_buildings_stay_within_reasonable_tile_scale():
+    limits = {"house": 40, "shop": 48, "block": 70, "midrise": 96, "tower": 130}
+    for tier, max_h in limits.items():
+        spr, _lights = _asset_building(tier, random.Random(4))
+        assert spr.get_height() <= max_h
+
+
+def test_layout_places_dense_downtown_and_city_centers_near_core():
+    city = IsoCity(None)
+    city._layout(RECT, 200_000, ("gas",))
+    kinds = [kind for kind, _extra in city._tiles.values()]
+    assert kinds.count("voxel_bldg") > 20
+    assert kinds.count("vroad") > 20
+    assert city._city_centers
+    for col, row, _entry in city._city_centers:
+        assert abs(col - row) <= 10
+        assert abs(col + row) <= 10
+        assert city._tiles[(col, row)][0] == "bldg"
+
+
+def test_baked_city_center_sprites_have_room_in_world():
+    viewport = pygame.Rect(0, 0, 1000, 460)
+    city = IsoCity(None)
+    city._bake(viewport, 200_000, ("gas", "solar", "wind"))
+    assert city._city_centers
+    for col, row, entry in city._city_centers:
+        sprite = assets.iso_sprite(entry["file"])
+        base = entry.get("base", [sprite.get_width() // 2, sprite.get_height() - 2])
+        sx, sy = iso_xy(col, row)
+        pos = pygame.Rect(
+            sx + city._origin[0] - base[0],
+            sy + city._origin[1] + TH - base[1],
+            sprite.get_width(),
+            sprite.get_height(),
+        )
+        assert city._world_rect.contains(pos)
+
+
+def test_curated_art_stays_inside_world_across_viewports():
+    fleets = (
+        ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"),
+        ("gas", "solar", "wind"),
+    )
+    for size in ((1000, 460), (1400, 680), (1800, 500)):
+        for fleet in fleets:
+            viewport = pygame.Rect((0, 0), size)
+            city = IsoCity(None)
+            city._bake(viewport, 200_000, fleet)
+            for site in city._plants:
+                bounds = pygame.Rect(
+                    site.sx + city._origin[0] + site.sprite_offset[0],
+                    site.sy + city._origin[1] + site.sprite_offset[1],
+                    site.sprite.get_width(),
+                    site.sprite.get_height(),
+                )
+                assert city._world_rect.contains(bounds), (
+                    size, site.key, bounds, city._world_rect)
+
+
+def test_plant_marker_targets_match_manifest_visual_centres():
+    viewport = pygame.Rect(0, 0, 1000, 460)
+    fleet = ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro")
+    city = IsoCity(None)
+    city._bake(viewport, 200_000, fleet)
+    ox, oy = city._origin
+    for site in city._plants:
+        art_rect = pygame.Rect(
+            site.sx + ox + site.sprite_offset[0],
+            site.sy + oy + site.sprite_offset[1],
+            site.sprite.get_width(),
+            site.sprite.get_height(),
+        )
+        target = (site.sx + ox + site.visual_dx, site.sy + oy + site.visual_dy)
+        entry = assets.iso_plant_entry(site.key)
+        visual = entry["visual_center"]
+        expected = (
+            art_rect.left + visual[0] * PLANT_ART_SCALE,
+            art_rect.top + visual[1] * PLANT_ART_SCALE,
+        )
+        assert art_rect.collidepoint(target), (site.key, art_rect, target)
+        assert abs(target[0] - expected[0]) <= 1, (site.key, target, expected)
+        assert abs(target[1] - expected[1]) <= 1, (site.key, target, expected)
 
 
 def test_baked_plant_art_stays_inside_world_and_pins_use_visual_centres():
@@ -291,9 +813,12 @@ def test_zoomed_map_marks_fully_offscreen_plants_without_dropping_them():
     city.camera.clamp(viewport, city._world_rect)
 
     markers = city.plant_markers(viewport)
-    assert set(markers) == set(fleet)
-    assert {key for key, marker in markers.items() if marker["visible"]} == {
-        "peaker", "solar"}
+    assert set(markers) == set(fleet)                       # no plant dropped
+    assert markers["solar"]["visible"]                      # the centred plant is on-screen
+    # Plants now sit in a compact ring, so more than one can share a 4x view; the
+    # point of this test is only that fully-offscreen plants are still MARKED
+    # (not dropped), so at least some markers are offscreen.
+    assert any(not m["visible"] for m in markers.values())
 
 
 def test_every_plant_has_a_decorative_switchyard_anchor_only():
@@ -314,8 +839,8 @@ def test_distribution_graph_connects_every_building_cluster():
     city._bake(viewport, 100_000, fleet)
 
     assert city._transformers
-    assert len(city._distribution_flows) == len(city._transformers)
-    assert city._service_flows
+    assert len(city._distribution_pulses) == len(city._transformers)
+    assert city._service_pulses
     assigned = {building for transformer in city._transformers
                 for building in transformer.buildings}
     assert assigned == {(col, row) for col, row, _kind, _e in city._buildings}
@@ -334,11 +859,49 @@ def test_distribution_graph_connects_every_building_cluster():
             assert dx and abs(abs(dy / dx) - TH / TW) < 1e-6
 
 
-def test_distribution_flow_respects_upstream_power_and_shedding():
-    assert distribution_level(0.2, 0.5, 0.8) == 0.8
-    assert distribution_level(0.7, 0.5, 0.8) == 0.0
-    assert distribution_level(0.2, 0.5, 0.0) == 0.0
+def test_transmission_routes_go_directly_plant_to_switchyard():
+    # 2026-08-03 redesign: transmission is a DIRECT corridor from each plant to
+    # the single switchyard where the electrons terminate; it must NOT detour
+    # through the town road network (that was "plant -> town -> switchyard").
+    # Distribution (separate, pulsing) carries power from the yard into town.
+    viewport = pygame.Rect(0, 0, 1000, 460)
+    fleet = ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro")
+    city = IsoCity(None)
+    city._bake(viewport, 100_000, fleet)
+    assert city._routes
+    yards = city._sub_screen                          # the switchyard hubs
+    for key, i, path in city._routes:
+        assert 0 <= i < len(yards), key               # feeds a real switchyard
+        assert path[-1] == yards[i], key              # terminates AT its switchyard
+        assert len(path) <= 3, (key, len(path))       # direct: start, mid, yard
 
+
+def test_electron_flows_ride_the_drawn_conductor_geometry():
+    """Each corridor's electron Flows must be built from the SAME elevated,
+    offset points the double-circuit wire is drawn with -- not a separate,
+    silently mismatched ground-level route (the original bug)."""
+    viewport = pygame.Rect(0, 0, 1000, 460)
+    fleet = ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro")
+    city = IsoCity(None)
+    city._bake(viewport, 100_000, fleet, {"nuclear": 45, "coal": 20, "gas": 3,
+                                          "peaker": 1.5, "solar": 1, "wind": 2,
+                                          "hydro": 5})
+    assert city._flows
+    for (key, i), flows in city._flows.items():
+        assert len(flows) == 2   # both conductors of the double-circuit bundle
+        route_end = city._sub_screen[i]
+        for flow in flows:
+            # the Flow's own endpoint (from its own path) must be within one
+            # conductor offset (6px) plus crossarm height (16px) of the
+            # substation's screen anchor -- i.e. it terminates AT the
+            # substation, not partway across open country
+            dist = math.hypot(flow.end[0] - route_end[0], flow.end[1] - route_end[1])
+            expected = math.hypot(6, 16)  # conductor offset + crossarm elevation
+            assert abs(dist - expected) < 1e-6, \
+                f"{key} conductor ends {dist:.2f}px from substation, expected {expected:.2f}"
+
+
+def test_flow_only_spawns_pulses_when_output_is_nonzero():
     surface = pygame.Surface((120, 20), pygame.SRCALPHA)
     offline = Flow([(0, 10), (100, 10)], seed=1)
     for _ in range(120):
@@ -348,6 +911,24 @@ def test_distribution_flow_respects_upstream_power_and_shedding():
     for _ in range(120):
         online.update_and_draw(surface, 1.0, 1 / 60.0)
     assert online.pulses or online.flashes
+
+
+def test_baked_electron_speed_reflects_real_ramp_latency():
+    """A fast-ramping plant's electrons must actually travel faster than a
+    slow-ramping plant's, using the SAME real ramp_up_latency values the
+    simulation itself uses (sources/*.py), not invented numbers."""
+    from ui.grid_flow import ramp_speed_px_s
+    viewport = pygame.Rect(0, 0, 1000, 460)
+    fleet = ("nuclear", "peaker")
+    city = IsoCity(None)
+    city._bake(viewport, 100_000, fleet, {"nuclear": 45.0, "peaker": 1.5})
+    nuclear_speed = next(f.speed_px_s for (key, _i), flows in city._flows.items()
+                         if key == "nuclear" for f in flows)
+    peaker_speed = next(f.speed_px_s for (key, _i), flows in city._flows.items()
+                        if key == "peaker" for f in flows)
+    assert peaker_speed > nuclear_speed
+    assert nuclear_speed == ramp_speed_px_s(45.0)
+    assert peaker_speed == ramp_speed_px_s(1.5)
 
 
 def test_distribution_routes_follow_isometric_street_axes():
@@ -377,20 +958,28 @@ def test_cooling_tower_rim_rect_is_pixel_centered():
         assert rect.width % 2 == 1
 
 
-def test_nuclear_live_beacon_uses_baked_tower_pixel_x():
+def test_voxel_backed_plants_are_static_no_live_animation():
+    # 2026-08-03 redesign: plants that use a voxel sprite (e.g. nuclear) are
+    # static for now -- live plume/blade/beacon animation is deferred, so
+    # _draw_plant_live is a no-op for them. (Wind, which has no voxel asset,
+    # still animates.)
     site = PlantSite("nuclear", 0, 0, 270.6, 100, 0.0)
     layer = pygame.Surface((400, 200), pygame.SRCALPHA)
-    _draw_plant_live(layer, site, 0.0, 0.0, True)
-    baked_tower_x = int(site.sx + 2)  # Pygame truncates the baked sprite blit.
-    assert layer.get_at((baked_tower_x, 84))[:3] == (236, 70, 58)
+    _draw_plant_live(layer, site, 0.6, 1.0, True)
+    assert layer.get_bounding_rect().width == 0   # nothing drawn for voxel plants
 
 
 def test_solar_lot_has_four_preserved_corners():
-    points = solar_lot_polygon(120, 90)
+    origin = (140, 90)
+    points = solar_lot_polygon(*origin)
     assert len(points) == 4
-    sprite, offset = _plant_static_sprite("solar", random.Random(7))
+    canvas = pygame.Surface((280, 180), pygame.SRCALPHA)
+    _draw_plant_static(canvas, "solar", origin[0], origin[1], random.Random(7))
+    bounds = canvas.get_bounding_rect()
+    sprite = canvas.subsurface(bounds).copy()
+    offset = (bounds.left - origin[0], bounds.top - origin[1])
     for x, y in points:
-        local = (x - 120 - offset[0], y - 90 - offset[1])
+        local = (x - origin[0] - offset[0], y - origin[1] - offset[1])
         area = pygame.Rect(local[0] - 1, local[1] - 1, 3, 3).clip(sprite.get_rect())
         assert area.width and area.height
         assert sprite.subsurface(area).get_bounding_rect().width > 0
@@ -531,6 +1120,14 @@ def test_visible_card_draw_has_chevron_and_no_leader_line():
     assert surface.get_at((card.centerx, card.bottom + 5)).a > 0
 
 
+def test_visible_card_chevron_tracks_nearest_plant_edge():
+    surface = pygame.Surface((320, 240), pygame.SRCALPHA)
+    rect = pygame.Rect(120, 70, 168, 94)
+    PlantPins._draw_card_chevron(surface, rect, (255, 220, 90), (80, 112))
+    assert surface.get_at((rect.left - 5, 112)).a > 0
+    assert surface.get_at((rect.centerx, rect.bottom + 5)).a == 0
+
+
 def test_focus_plant_centers_camera_on_plant():
     city = _city(200_000)
     viewport = pygame.Rect(0, 0, 1000, 680)
@@ -594,6 +1191,50 @@ def _city(population):
     return city
 
 
+def test_tiles_and_layout_key_are_publicly_readable():
+    viewport = pygame.Rect(0, 0, 1000, 460)
+    state = SimpleNamespace(population=None, sources=[])
+    city = IsoCity(None)
+    city.prepare(viewport, state)
+    assert city.tiles is city._tiles
+    assert city.layout_key == city._key
+    assert city.layout_key is not None
+
+
+def test_plants_is_publicly_readable():
+    viewport = pygame.Rect(0, 0, 1400, 700)
+    gas = SimpleNamespace(
+        key="gas", max_output_mw=750.0, ramp_up_latency=3, ramp_down_latency=3)
+    solar = SimpleNamespace(
+        key="solar", max_output_mw=100.0, ramp_up_latency=1, ramp_down_latency=1)
+    state = SimpleNamespace(population=200_000, sources=[gas, solar])
+    city = IsoCity(None)
+    city.prepare(viewport, state)
+    assert city.plants is city._plants
+    assert len(city.plants) >= 1
+
+
+def test_transmission3d_snapshot_is_publicly_readable():
+    import pygame
+    from game_state import GameState
+    import scenarios
+    from ui.iso_city import IsoCity
+
+    pygame.init()
+    city = IsoCity(None)
+    rect = pygame.Rect(0, 0, 1400, 700)
+    state = GameState(scenarios.make_standard())
+    city.prepare(rect, state)
+
+    snapshot = city.transmission3d
+    assert isinstance(snapshot, tuple)
+    assert snapshot
+    first = snapshot[0]
+    assert set(first) == {"key", "substation_index", "tower_points", "conductor_paths"}
+    assert first["tower_points"]
+    assert set(first["conductor_paths"]) == {-6, 6}
+
+
 def test_freeplay_city_size_is_decoupled_from_grid_megawatts():
     class State:
         population = None
@@ -601,12 +1242,53 @@ def test_freeplay_city_size_is_decoupled_from_grid_megawatts():
         def __init__(self, peak):
             self.demand_peak_mw = peak
 
+    assert ILLUSTRATIVE_POPULATION <= 60_000
     assert state_population(State(100.0)) == ILLUSTRATIVE_POPULATION
     assert state_population(State(50_000.0)) == ILLUSTRATIVE_POPULATION
 
     career = State(100.0)
     career.population = 42_000
     assert state_population(career) == 42_000
+
+
+def test_freeplay_visual_budget_stays_below_laggy_overpopulation():
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    city = IsoCity(None)
+    city._bake(viewport, ILLUSTRATIVE_POPULATION,
+               ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+    assert len(city._buildings) <= 260
+    assert len(city._tiles) <= 26_000
+
+
+def test_zoomed_out_world_avoids_dead_landscape_buffer():
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    world_w, world_h = required_world_size(viewport)
+    assert world_w <= math.ceil(viewport.width * 1.06)
+    assert world_h <= math.ceil(viewport.height * 1.06)
+
+
+def test_zoomed_out_gameplay_footprint_fills_the_frame_without_extra_buildings():
+    viewport = pygame.Rect(0, 0, 1365, 900)
+    city = IsoCity(None)
+    city._bake(viewport, ILLUSTRATIVE_POPULATION,
+               ("nuclear", "coal", "gas", "peaker", "solar", "wind", "hydro"))
+    ox, oy = city._origin
+    footprint = None
+    for site in city._plants:
+        rect = pygame.Rect(site.sx + ox + site.sprite_offset[0],
+                           site.sy + oy + site.sprite_offset[1],
+                           site.sprite.get_width(), site.sprite.get_height())
+        footprint = rect if footprint is None else footprint.union(rect)
+    for col, row, _name, _e in city._buildings:
+        x, y = iso_xy(col, row)
+        rect = pygame.Rect(x + ox, y + oy - TH, TW, TH * 3)
+        footprint = rect if footprint is None else footprint.union(rect)
+    # After the 2026-08-03 elevation the FRAME is filled by mountains + restored
+    # countryside; the plants+city are a compact, city-hero footprint (each tech
+    # on its own clear floor) rather than sprawled to the frame edges.
+    assert footprint.width >= viewport.width * 0.53
+    assert footprint.height >= viewport.height * 0.40
+    assert len(city._buildings) <= 260
 
 
 def test_lit_fraction():
@@ -642,6 +1324,15 @@ def test_absolute_overload_visual_thresholds():
     assert 0.0 < fire_overload_level(1.75) < 1.0
     assert fire_overload_level(2.00) == 1.0
     assert fire_overload_level(2.50) == 1.0
+
+
+def test_overload_overlay_is_edge_vignette_not_full_screen_wash():
+    city = IsoCity(None)
+    layer = pygame.Surface((300, 200), pygame.SRCALPHA)
+    city._draw_overload(layer, layer.get_rect(), voltage=1.0, fire=0.0)
+    assert layer.get_at((150, 100)).a == 0
+    assert layer.get_at((2, 100)).a > 0
+    assert layer.get_at((150, 2)).a > 0
 
 
 def test_fire_escalation_is_monotonic_from_150_to_200_percent():
@@ -832,8 +1523,16 @@ def test_daylight():
 
 
 if __name__ == "__main__":
+    failures = []
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
-            fn()
-            print(f"ok  {name}")
+            try:
+                fn()
+                print(f"ok  {name}")
+            except Exception as exc:
+                print(f"FAIL {name}: {exc}")
+                failures.append(name)
+    if failures:
+        print(f"\n{len(failures)} test(s) failed: {', '.join(failures)}")
+        sys.exit(1)
     print("\nall city model checks passed")

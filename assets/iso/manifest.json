@@ -1,0 +1,1239 @@
+{
+  "buildings": {
+    "house": [
+      {
+        "file": "buildings/house_01.png",
+        "size": [
+          29,
+          21
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          27,
+          19
+        ],
+        "capacity_tier": "house",
+        "base": [
+          14,
+          19
+        ]
+      },
+      {
+        "file": "buildings/house_02.png",
+        "size": [
+          27,
+          16
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          25,
+          14
+        ],
+        "capacity_tier": "house",
+        "base": [
+          13,
+          14
+        ]
+      },
+      {
+        "file": "buildings/house_03.png",
+        "size": [
+          27,
+          16
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          25,
+          14
+        ],
+        "capacity_tier": "house",
+        "base": [
+          13,
+          14
+        ]
+      }
+    ],
+    "shop": [
+      {
+        "file": "buildings/shop_01.png",
+        "size": [
+          26,
+          24
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          22
+        ],
+        "capacity_tier": "shop",
+        "base": [
+          13,
+          22
+        ]
+      },
+      {
+        "file": "buildings/shop_02.png",
+        "size": [
+          28,
+          23
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          26,
+          21
+        ],
+        "capacity_tier": "shop",
+        "base": [
+          14,
+          21
+        ]
+      },
+      {
+        "file": "buildings/shop_03.png",
+        "size": [
+          26,
+          22
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          20
+        ],
+        "capacity_tier": "shop",
+        "base": [
+          13,
+          20
+        ]
+      }
+    ],
+    "block": [
+      {
+        "file": "buildings/block_01.png",
+        "size": [
+          26,
+          24
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          22
+        ],
+        "capacity_tier": "block",
+        "base": [
+          13,
+          22
+        ]
+      },
+      {
+        "file": "buildings/block_02.png",
+        "size": [
+          26,
+          24
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          22
+        ],
+        "capacity_tier": "block",
+        "base": [
+          13,
+          22
+        ]
+      },
+      {
+        "file": "buildings/block_03.png",
+        "size": [
+          26,
+          24
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          22
+        ],
+        "capacity_tier": "block",
+        "base": [
+          13,
+          22
+        ]
+      }
+    ],
+    "midrise": [
+      {
+        "file": "buildings/midrise_01.png",
+        "size": [
+          26,
+          41
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          39
+        ],
+        "capacity_tier": "midrise",
+        "base": [
+          13,
+          39
+        ]
+      },
+      {
+        "file": "buildings/midrise_02.png",
+        "size": [
+          28,
+          44
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          26,
+          42
+        ],
+        "capacity_tier": "midrise",
+        "base": [
+          14,
+          42
+        ]
+      },
+      {
+        "file": "buildings/midrise_03.png",
+        "size": [
+          28,
+          44
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          26,
+          42
+        ],
+        "capacity_tier": "midrise",
+        "base": [
+          14,
+          42
+        ]
+      }
+    ],
+    "tower": [
+      {
+        "file": "buildings/tower_01.png",
+        "size": [
+          26,
+          58
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          56
+        ],
+        "capacity_tier": "tower",
+        "base": [
+          13,
+          56
+        ]
+      },
+      {
+        "file": "buildings/tower_02.png",
+        "size": [
+          26,
+          48
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          46
+        ],
+        "capacity_tier": "tower",
+        "base": [
+          13,
+          46
+        ]
+      },
+      {
+        "file": "buildings/tower_03.png",
+        "size": [
+          26,
+          47
+        ],
+        "alpha_bounds": [
+          1,
+          1,
+          24,
+          45
+        ],
+        "capacity_tier": "tower",
+        "base": [
+          13,
+          45
+        ]
+      }
+    ]
+  },
+  "city_center": [
+    {
+      "file": "city_center/core_01.png",
+      "size": [
+        113,
+        37
+      ],
+      "alpha_bounds": [
+        0,
+        1,
+        112,
+        36
+      ],
+      "base": [
+        56,
+        35
+      ],
+      "footprint": [
+        2,
+        2
+      ]
+    },
+    {
+      "file": "city_center/core_02.png",
+      "size": [
+        86,
+        47
+      ],
+      "alpha_bounds": [
+        1,
+        1,
+        84,
+        45
+      ],
+      "base": [
+        43,
+        45
+      ],
+      "footprint": [
+        2,
+        2
+      ]
+    },
+    {
+      "file": "city_center/core_03.png",
+      "size": [
+        26,
+        47
+      ],
+      "alpha_bounds": [
+        1,
+        1,
+        24,
+        45
+      ],
+      "base": [
+        13,
+        45
+      ],
+      "footprint": [
+        2,
+        2
+      ]
+    }
+  ],
+  "plants": {
+    "nuclear": {
+      "file": "plants/nuclear_01.png",
+      "size": [
+        48,
+        50
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        48,
+        50
+      ],
+      "base": [
+        24,
+        48
+      ],
+      "switchyard_anchor": [
+        35,
+        35
+      ],
+      "visual_center": [
+        24,
+        0
+      ]
+    },
+    "coal": {
+      "file": "plants/coal_01.png",
+      "size": [
+        38,
+        35
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        38,
+        35
+      ],
+      "base": [
+        19,
+        33
+      ],
+      "switchyard_anchor": [
+        27,
+        24
+      ],
+      "visual_center": [
+        19,
+        0
+      ]
+    },
+    "gas": {
+      "file": "plants/gas_01.png",
+      "size": [
+        38,
+        24
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        38,
+        24
+      ],
+      "base": [
+        19,
+        22
+      ],
+      "switchyard_anchor": [
+        27,
+        17
+      ],
+      "visual_center": [
+        19,
+        0
+      ]
+    },
+    "peaker": {
+      "file": "plants/peaker_01.png",
+      "size": [
+        38,
+        24
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        38,
+        24
+      ],
+      "base": [
+        19,
+        22
+      ],
+      "switchyard_anchor": [
+        27,
+        17
+      ],
+      "visual_center": [
+        19,
+        0
+      ]
+    },
+    "solar": {
+      "file": "plants/solar_01.png",
+      "size": [
+        48,
+        32
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        48,
+        32
+      ],
+      "base": [
+        24,
+        30
+      ],
+      "switchyard_anchor": [
+        35,
+        22
+      ],
+      "visual_center": [
+        24,
+        0
+      ]
+    },
+    "wind": {
+      "file": "plants/wind_01.png",
+      "size": [
+        54,
+        41
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        54,
+        41
+      ],
+      "base": [
+        27,
+        39
+      ],
+      "switchyard_anchor": [
+        39,
+        29
+      ],
+      "visual_center": [
+        27,
+        0
+      ]
+    },
+    "hydro": {
+      "file": "plants/hydro_01.png",
+      "size": [
+        112,
+        36
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        112,
+        36
+      ],
+      "base": [
+        56,
+        34
+      ],
+      "switchyard_anchor": [
+        81,
+        25
+      ],
+      "visual_center": [
+        56,
+        0
+      ]
+    },
+    "generic": {
+      "file": "plants/generic_01.png",
+      "size": [
+        24,
+        22
+      ],
+      "alpha_bounds": [
+        0,
+        0,
+        24,
+        22
+      ],
+      "base": [
+        12,
+        20
+      ],
+      "switchyard_anchor": [
+        17,
+        15
+      ],
+      "visual_center": [
+        12,
+        0
+      ]
+    }
+  },
+  "roads": {
+    "straight_ne": [
+      {
+        "file": "roads/straight_ne_01.png",
+        "size": [
+          46,
+          24
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          46,
+          24
+        ],
+        "base": [
+          23,
+          20
+        ],
+        "tags": [
+          "road",
+          "straight",
+          "ne"
+        ]
+      }
+    ],
+    "straight_nw": [
+      {
+        "file": "roads/straight_nw_01.png",
+        "size": [
+          46,
+          24
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          46,
+          24
+        ],
+        "base": [
+          23,
+          20
+        ],
+        "tags": [
+          "road",
+          "straight",
+          "nw"
+        ]
+      }
+    ],
+    "corner_ne": [
+      {
+        "file": "roads/corner_ne_01.png",
+        "size": [
+          38,
+          24
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          38,
+          24
+        ],
+        "base": [
+          19,
+          20
+        ],
+        "tags": [
+          "road",
+          "corner",
+          "ne"
+        ]
+      }
+    ],
+    "corner_nw": [
+      {
+        "file": "roads/corner_nw_01.png",
+        "size": [
+          38,
+          24
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          38,
+          24
+        ],
+        "base": [
+          19,
+          20
+        ],
+        "tags": [
+          "road",
+          "corner",
+          "nw"
+        ]
+      }
+    ],
+    "tee_ne": [
+      {
+        "file": "roads/tee_ne_01.png",
+        "size": [
+          46,
+          24
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          46,
+          24
+        ],
+        "base": [
+          23,
+          20
+        ],
+        "tags": [
+          "road",
+          "tee",
+          "ne"
+        ]
+      }
+    ],
+    "tee_nw": [
+      {
+        "file": "roads/tee_nw_01.png",
+        "size": [
+          46,
+          24
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          46,
+          24
+        ],
+        "base": [
+          23,
+          20
+        ],
+        "tags": [
+          "road",
+          "tee",
+          "nw"
+        ]
+      }
+    ],
+    "cross": [
+      {
+        "file": "roads/cross_01.png",
+        "size": [
+          46,
+          24
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          46,
+          24
+        ],
+        "base": [
+          23,
+          20
+        ],
+        "tags": [
+          "road",
+          "cross"
+        ]
+      }
+    ],
+    "avenue_ne": [
+      {
+        "file": "roads/avenue_ne_01.png",
+        "size": [
+          54,
+          28
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          54,
+          28
+        ],
+        "base": [
+          27,
+          24
+        ],
+        "tags": [
+          "road",
+          "avenue",
+          "ne"
+        ]
+      }
+    ],
+    "avenue_nw": [
+      {
+        "file": "roads/avenue_nw_01.png",
+        "size": [
+          54,
+          28
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          54,
+          28
+        ],
+        "base": [
+          27,
+          24
+        ],
+        "tags": [
+          "road",
+          "avenue",
+          "nw"
+        ]
+      }
+    ],
+    "avenue_cross": [
+      {
+        "file": "roads/avenue_cross_01.png",
+        "size": [
+          54,
+          28
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          54,
+          28
+        ],
+        "base": [
+          27,
+          24
+        ],
+        "tags": [
+          "road",
+          "avenue",
+          "cross"
+        ]
+      }
+    ],
+    "avenue_tee_ne": [
+      {
+        "file": "roads/avenue_tee_ne_01.png",
+        "size": [
+          54,
+          56
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          54,
+          56
+        ],
+        "base": [
+          27,
+          52
+        ],
+        "tags": [
+          "road",
+          "avenue",
+          "tee",
+          "ne"
+        ]
+      }
+    ],
+    "avenue_corner_ne": [
+      {
+        "file": "roads/avenue_corner_ne_01.png",
+        "size": [
+          54,
+          28
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          54,
+          28
+        ],
+        "base": [
+          27,
+          24
+        ],
+        "tags": [
+          "road",
+          "avenue",
+          "corner",
+          "ne"
+        ]
+      }
+    ]
+  },
+  "municipal": {
+    "police_station": [
+      {
+        "file": "municipal/police_station_01.png",
+        "size": [
+          60,
+          40
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          60,
+          40
+        ],
+        "base": [
+          30,
+          38
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "police"
+        ]
+      }
+    ],
+    "hospital": [
+      {
+        "file": "municipal/hospital_01.png",
+        "size": [
+          62,
+          40
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          62,
+          40
+        ],
+        "base": [
+          31,
+          38
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "medical"
+        ]
+      }
+    ],
+    "fire_station": [
+      {
+        "file": "municipal/fire_station_01.png",
+        "size": [
+          50,
+          44
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          50,
+          44
+        ],
+        "base": [
+          25,
+          42
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "fire"
+        ]
+      }
+    ],
+    "school": [
+      {
+        "file": "municipal/school_01.png",
+        "size": [
+          60,
+          41
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          60,
+          41
+        ],
+        "base": [
+          30,
+          39
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "school"
+        ]
+      }
+    ],
+    "clinic": [
+      {
+        "file": "municipal/clinic_01.png",
+        "size": [
+          34,
+          34
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          34,
+          34
+        ],
+        "base": [
+          17,
+          32
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "medical"
+        ]
+      }
+    ],
+    "small_fire_station": [
+      {
+        "file": "municipal/small_fire_station_01.png",
+        "size": [
+          41,
+          37
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          41,
+          37
+        ],
+        "base": [
+          20,
+          35
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "fire"
+        ]
+      }
+    ],
+    "schoolhouse": [
+      {
+        "file": "municipal/schoolhouse_01.png",
+        "size": [
+          40,
+          36
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          40,
+          36
+        ],
+        "base": [
+          20,
+          34
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "school"
+        ]
+      }
+    ],
+    "industrial_unit": [
+      {
+        "file": "municipal/industrial_unit_01.png",
+        "size": [
+          60,
+          36
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          60,
+          36
+        ],
+        "base": [
+          30,
+          34
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "industrial"
+        ]
+      }
+    ],
+    "storage_inc": [
+      {
+        "file": "municipal/storage_inc_01.png",
+        "size": [
+          23,
+          38
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          23,
+          38
+        ],
+        "base": [
+          11,
+          36
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "industrial",
+          "utility"
+        ]
+      }
+    ],
+    "graveyard": [
+      {
+        "file": "municipal/graveyard_01.png",
+        "size": [
+          69,
+          49
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          69,
+          49
+        ],
+        "base": [
+          34,
+          47
+        ],
+        "footprint": [
+          2,
+          2
+        ],
+        "tags": [
+          "civic",
+          "green"
+        ]
+      }
+    ]
+  },
+  "details": {
+    "pavement": [
+      {
+        "file": "details/pavement_01.png",
+        "size": [
+          24,
+          7
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          24,
+          7
+        ],
+        "base": [
+          12,
+          5
+        ],
+        "tags": [
+          "paved"
+        ]
+      }
+    ],
+    "parking": [
+      {
+        "file": "details/parking_01.png",
+        "size": [
+          24,
+          7
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          24,
+          7
+        ],
+        "base": [
+          12,
+          5
+        ],
+        "tags": [
+          "paved",
+          "parking"
+        ]
+      }
+    ],
+    "service_yard": [
+      {
+        "file": "details/service_yard_01.png",
+        "size": [
+          24,
+          7
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          24,
+          7
+        ],
+        "base": [
+          12,
+          5
+        ],
+        "tags": [
+          "paved",
+          "utility"
+        ]
+      }
+    ],
+    "street_tree": [
+      {
+        "file": "details/street_tree_01.png",
+        "size": [
+          28,
+          10
+        ],
+        "alpha_bounds": [
+          0,
+          0,
+          28,
+          10
+        ],
+        "base": [
+          14,
+          8
+        ],
+        "tags": [
+          "green",
+          "street_tree"
+        ]
+      }
+    ]
+  },
+  "block_palettes": {
+    "core": [
+      "tower",
+      "midrise",
+      "shop"
+    ],
+    "mixed": [
+      "midrise",
+      "block",
+      "shop",
+      "house"
+    ],
+    "residential": [
+      "house",
+      "shop",
+      "block"
+    ],
+    "civic": [
+      "municipal",
+      "midrise",
+      "shop"
+    ],
+    "industrial": [
+      "municipal",
+      "block",
+      "shop"
+    ],
+    "utility": [
+      "plants",
+      "municipal",
+      "details"
+    ]
+  }
+}

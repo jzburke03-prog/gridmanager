@@ -1,3 +1,5 @@
 pygame==2.6.1
 numpy==2.0.2
 certifi
+moderngl==5.12.0
+pillow==12.3.0

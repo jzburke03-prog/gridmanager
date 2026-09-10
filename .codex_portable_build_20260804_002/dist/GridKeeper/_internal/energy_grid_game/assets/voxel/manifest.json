@@ -1,0 +1,452 @@
+{
+  "nuclear": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/nuclear_r0.png",
+        "w": 819,
+        "h": 729
+      },
+      {
+        "file": "generation/nuclear_r1.png",
+        "w": 947,
+        "h": 595
+      },
+      {
+        "file": "generation/nuclear_r2.png",
+        "w": 819,
+        "h": 611
+      },
+      {
+        "file": "generation/nuclear_r3.png",
+        "w": 947,
+        "h": 619
+      }
+    ]
+  },
+  "fusion": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/fusion_r0.png",
+        "w": 739,
+        "h": 505
+      },
+      {
+        "file": "generation/fusion_r1.png",
+        "w": 711,
+        "h": 537
+      },
+      {
+        "file": "generation/fusion_r2.png",
+        "w": 739,
+        "h": 483
+      },
+      {
+        "file": "generation/fusion_r3.png",
+        "w": 711,
+        "h": 523
+      }
+    ]
+  },
+  "hydro": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/hydro_r0.png",
+        "w": 1011,
+        "h": 663
+      },
+      {
+        "file": "generation/hydro_r1.png",
+        "w": 1011,
+        "h": 607
+      },
+      {
+        "file": "generation/hydro_r2.png",
+        "w": 1011,
+        "h": 679
+      },
+      {
+        "file": "generation/hydro_r3.png",
+        "w": 1011,
+        "h": 711
+      }
+    ]
+  },
+  "hydro_v2": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/hydro_v2_r0.png",
+        "w": 1011,
+        "h": 663
+      },
+      {
+        "file": "generation/hydro_v2_r1.png",
+        "w": 1011,
+        "h": 607
+      },
+      {
+        "file": "generation/hydro_v2_r2.png",
+        "w": 1011,
+        "h": 679
+      },
+      {
+        "file": "generation/hydro_v2_r3.png",
+        "w": 1011,
+        "h": 711
+      }
+    ]
+  },
+  "solar": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/solar_r0.png",
+        "w": 879,
+        "h": 481
+      },
+      {
+        "file": "generation/solar_r1.png",
+        "w": 895,
+        "h": 463
+      },
+      {
+        "file": "generation/solar_r2.png",
+        "w": 879,
+        "h": 471
+      },
+      {
+        "file": "generation/solar_r3.png",
+        "w": 895,
+        "h": 473
+      }
+    ]
+  },
+  "thermal": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/thermal_r0.png",
+        "w": 879,
+        "h": 763
+      },
+      {
+        "file": "generation/thermal_r1.png",
+        "w": 875,
+        "h": 763
+      },
+      {
+        "file": "generation/thermal_r2.png",
+        "w": 879,
+        "h": 817
+      },
+      {
+        "file": "generation/thermal_r3.png",
+        "w": 875,
+        "h": 837
+      }
+    ]
+  },
+  "geothermal": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/geothermal_r0.png",
+        "w": 899,
+        "h": 747
+      },
+      {
+        "file": "generation/geothermal_r1.png",
+        "w": 939,
+        "h": 575
+      },
+      {
+        "file": "generation/geothermal_r2.png",
+        "w": 899,
+        "h": 751
+      },
+      {
+        "file": "generation/geothermal_r3.png",
+        "w": 939,
+        "h": 895
+      }
+    ]
+  },
+  "tidal": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/tidal_r0.png",
+        "w": 1011,
+        "h": 511
+      },
+      {
+        "file": "generation/tidal_r1.png",
+        "w": 1011,
+        "h": 511
+      },
+      {
+        "file": "generation/tidal_r2.png",
+        "w": 1011,
+        "h": 511
+      },
+      {
+        "file": "generation/tidal_r3.png",
+        "w": 1011,
+        "h": 511
+      }
+    ]
+  },
+  "cogeneration": {
+    "category": "generation",
+    "rotations": [
+      {
+        "file": "generation/cogeneration_r0.png",
+        "w": 939,
+        "h": 747
+      },
+      {
+        "file": "generation/cogeneration_r1.png",
+        "w": 871,
+        "h": 793
+      },
+      {
+        "file": "generation/cogeneration_r2.png",
+        "w": 939,
+        "h": 661
+      },
+      {
+        "file": "generation/cogeneration_r3.png",
+        "w": 871,
+        "h": 655
+      }
+    ]
+  },
+  "apartment": {
+    "category": "town",
+    "rotations": [
+      {
+        "file": "town/apartment_r0.png",
+        "w": 659,
+        "h": 757
+      },
+      {
+        "file": "town/apartment_r1.png",
+        "w": 659,
+        "h": 755
+      },
+      {
+        "file": "town/apartment_r2.png",
+        "w": 659,
+        "h": 755
+      },
+      {
+        "file": "town/apartment_r3.png",
+        "w": 659,
+        "h": 757
+      }
+    ]
+  },
+  "department_store": {
+    "category": "town",
+    "rotations": [
+      {
+        "file": "town/department_store_r0.png",
+        "w": 1003,
+        "h": 793
+      },
+      {
+        "file": "town/department_store_r1.png",
+        "w": 1003,
+        "h": 903
+      },
+      {
+        "file": "town/department_store_r2.png",
+        "w": 1003,
+        "h": 899
+      },
+      {
+        "file": "town/department_store_r3.png",
+        "w": 1003,
+        "h": 789
+      }
+    ]
+  },
+  "mall": {
+    "category": "town",
+    "rotations": [
+      {
+        "file": "town/mall_r0.png",
+        "w": 395,
+        "h": 395
+      },
+      {
+        "file": "town/mall_r1.png",
+        "w": 371,
+        "h": 395
+      },
+      {
+        "file": "town/mall_r2.png",
+        "w": 395,
+        "h": 383
+      },
+      {
+        "file": "town/mall_r3.png",
+        "w": 371,
+        "h": 383
+      }
+    ]
+  },
+  "school": {
+    "category": "town",
+    "rotations": [
+      {
+        "file": "town/school_r0.png",
+        "w": 903,
+        "h": 763
+      },
+      {
+        "file": "town/school_r1.png",
+        "w": 731,
+        "h": 705
+      },
+      {
+        "file": "town/school_r2.png",
+        "w": 903,
+        "h": 551
+      },
+      {
+        "file": "town/school_r3.png",
+        "w": 731,
+        "h": 707
+      }
+    ]
+  },
+  "house": {
+    "category": "town",
+    "rotations": [
+      {
+        "file": "town/house_r0.png",
+        "w": 323,
+        "h": 271
+      },
+      {
+        "file": "town/house_r1.png",
+        "w": 323,
+        "h": 281
+      },
+      {
+        "file": "town/house_r2.png",
+        "w": 323,
+        "h": 281
+      },
+      {
+        "file": "town/house_r3.png",
+        "w": 323,
+        "h": 271
+      }
+    ]
+  },
+  "market": {
+    "category": "town",
+    "rotations": [
+      {
+        "file": "town/market_r0.png",
+        "w": 243,
+        "h": 165
+      },
+      {
+        "file": "town/market_r1.png",
+        "w": 243,
+        "h": 167
+      },
+      {
+        "file": "town/market_r2.png",
+        "w": 243,
+        "h": 163
+      },
+      {
+        "file": "town/market_r3.png",
+        "w": 243,
+        "h": 161
+      }
+    ]
+  },
+  "playground": {
+    "category": "town",
+    "rotations": [
+      {
+        "file": "town/playground_r0.png",
+        "w": 707,
+        "h": 375
+      },
+      {
+        "file": "town/playground_r1.png",
+        "w": 707,
+        "h": 375
+      },
+      {
+        "file": "town/playground_r2.png",
+        "w": 707,
+        "h": 375
+      },
+      {
+        "file": "town/playground_r3.png",
+        "w": 707,
+        "h": 381
+      }
+    ]
+  },
+  "floor1": {
+    "category": "tiles",
+    "rotations": [
+      {
+        "file": "tiles/floor1_r0.png",
+        "w": 499,
+        "h": 255
+      },
+      {
+        "file": "tiles/floor1_r1.png",
+        "w": 499,
+        "h": 255
+      },
+      {
+        "file": "tiles/floor1_r2.png",
+        "w": 499,
+        "h": 255
+      },
+      {
+        "file": "tiles/floor1_r3.png",
+        "w": 499,
+        "h": 255
+      }
+    ]
+  },
+  "floor2": {
+    "category": "tiles",
+    "rotations": [
+      {
+        "file": "tiles/floor2_r0.png",
+        "w": 499,
+        "h": 255
+      },
+      {
+        "file": "tiles/floor2_r1.png",
+        "w": 499,
+        "h": 255
+      },
+      {
+        "file": "tiles/floor2_r2.png",
+        "w": 499,
+        "h": 255
+      },
+      {
+        "file": "tiles/floor2_r3.png",
+        "w": 499,
+        "h": 255
+      }
+    ]
+  }
+}

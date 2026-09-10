@@ -1,0 +1,164 @@
+{
+  "assets": [
+    {
+      "name": "coal_power",
+      "frame": 1,
+      "file": "coal_power_frame_01.png"
+    },
+    {
+      "name": "coal_power",
+      "frame": 2,
+      "file": "coal_power_frame_02.png"
+    },
+    {
+      "name": "coal_power",
+      "frame": 3,
+      "file": "coal_power_frame_03.png"
+    },
+    {
+      "name": "coal_power",
+      "frame": 4,
+      "file": "coal_power_frame_04.png"
+    },
+    {
+      "name": "hydroelectric_power",
+      "frame": 1,
+      "file": "hydroelectric_power_frame_01.png"
+    },
+    {
+      "name": "hydroelectric_power",
+      "frame": 2,
+      "file": "hydroelectric_power_frame_02.png"
+    },
+    {
+      "name": "hydroelectric_power",
+      "frame": 3,
+      "file": "hydroelectric_power_frame_03.png"
+    },
+    {
+      "name": "hydroelectric_power",
+      "frame": 4,
+      "file": "hydroelectric_power_frame_04.png"
+    },
+    {
+      "name": "natural_gas_combined_cycle",
+      "frame": 1,
+      "file": "natural_gas_combined_cycle_frame_01.png"
+    },
+    {
+      "name": "natural_gas_combined_cycle",
+      "frame": 2,
+      "file": "natural_gas_combined_cycle_frame_02.png"
+    },
+    {
+      "name": "natural_gas_combined_cycle",
+      "frame": 3,
+      "file": "natural_gas_combined_cycle_frame_03.png"
+    },
+    {
+      "name": "natural_gas_combined_cycle",
+      "frame": 4,
+      "file": "natural_gas_combined_cycle_frame_04.png"
+    },
+    {
+      "name": "natural_gas_peaker",
+      "frame": 1,
+      "file": "natural_gas_peaker_frame_01.png"
+    },
+    {
+      "name": "natural_gas_peaker",
+      "frame": 2,
+      "file": "natural_gas_peaker_frame_02.png"
+    },
+    {
+      "name": "natural_gas_peaker",
+      "frame": 3,
+      "file": "natural_gas_peaker_frame_03.png"
+    },
+    {
+      "name": "natural_gas_peaker",
+      "frame": 4,
+      "file": "natural_gas_peaker_frame_04.png"
+    },
+    {
+      "name": "nuclear_power",
+      "frame": 1,
+      "file": "nuclear_power_frame_01.png"
+    },
+    {
+      "name": "nuclear_power",
+      "frame": 2,
+      "file": "nuclear_power_frame_02.png"
+    },
+    {
+      "name": "nuclear_power",
+      "frame": 3,
+      "file": "nuclear_power_frame_03.png"
+    },
+    {
+      "name": "nuclear_power",
+      "frame": 4,
+      "file": "nuclear_power_frame_04.png"
+    },
+    {
+      "name": "question_mark_operator",
+      "frame": 1,
+      "file": "question_mark_operator_frame_01.png"
+    },
+    {
+      "name": "question_mark_operator",
+      "frame": 2,
+      "file": "question_mark_operator_frame_02.png"
+    },
+    {
+      "name": "question_mark_operator",
+      "frame": 3,
+      "file": "question_mark_operator_frame_03.png"
+    },
+    {
+      "name": "question_mark_operator",
+      "frame": 4,
+      "file": "question_mark_operator_frame_04.png"
+    },
+    {
+      "name": "solar_power",
+      "frame": 1,
+      "file": "solar_power_frame_01.png"
+    },
+    {
+      "name": "solar_power",
+      "frame": 2,
+      "file": "solar_power_frame_02.png"
+    },
+    {
+      "name": "solar_power",
+      "frame": 3,
+      "file": "solar_power_frame_03.png"
+    },
+    {
+      "name": "solar_power",
+      "frame": 4,
+      "file": "solar_power_frame_04.png"
+    },
+    {
+      "name": "wind_power",
+      "frame": 1,
+      "file": "wind_power_frame_01.png"
+    },
+    {
+      "name": "wind_power",
+      "frame": 2,
+      "file": "wind_power_frame_02.png"
+    },
+    {
+      "name": "wind_power",
+      "frame": 3,
+      "file": "wind_power_frame_03.png"
+    },
+    {
+      "name": "wind_power",
+      "frame": 4,
+      "file": "wind_power_frame_04.png"
+    }
+  ]
+}

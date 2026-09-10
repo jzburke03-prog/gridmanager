@@ -58,8 +58,22 @@ import pygame
 
 from ui import assets
 from ui.atmosphere import sample_atmosphere
-from ui.grid_flow import Flow
+from ui.grid_flow import Flow, LinePulse, ramp_speed_px_s, RAMP_LATENCY_MAX_S, NON_RAMP_SPEED_PX_S
 from ui.time_of_day import daylight
+from ui.road_network import bootstrap_network, grow_tick, TickResult
+from ui.urban_blocks import (_district, build_urban_layout, nearest_road_tile,
+                             road_path_tiles)
+from ui.urban_render import (draw_municipal_civic, draw_urban_block,
+                             draw_urban_road, draw_utility_campus_base)
+from ui import voxel_terrain as vt
+from ui import voxel_assets as va
+from ui import voxel_city as vc
+from ui import terrain3d
+
+# Solar/wind ramp_up_latency represents throttle response, not a real
+# generation-ramp characteristic -- excluded from the ramp-speed mapping the
+# same way CONGESTION_EXCLUDED_KEYS excludes them in game_state.py.
+NON_RAMP_SPEED_KEYS = ("solar", "wind")
 
 # ---------------------------------------------------------------------------
 # Illumination model. Pure functions, no display needed — test_city_model.py
@@ -73,7 +87,7 @@ TRAFFIC_MIN = 0.08      # roads are never completely still, even in blackout
 # patchy, with only a thumb on the scale protecting the core. Push this toward
 # 1.0 and load-shedding degenerates into a shrinking bullseye, which is not
 # what a half-supplied city looks like from the air.
-CORE_BIAS = 0.42
+CORE_BIAS = 0.32
 FEEDER_SIZE = 5         # tiles per feeder circuit — the grain of an outage patch
 
 
@@ -91,11 +105,6 @@ def served_fraction(fill_pct: float) -> float:
     """How much of the city the supply can reach. 1.0 once supply meets demand;
     oversupply cannot light more than the whole city."""
     return _clamp01(fill_pct)
-
-
-def distribution_level(priority, served, upstream):
-    """Visible downstream flow for one feeder branch."""
-    return _clamp01(upstream) if priority < served else 0.0
 
 
 def lit_fraction(demand_level: float, fill_pct: float,
@@ -158,7 +167,7 @@ def traffic_level(sim_hour: float, served: float = 1.0,
 TW, TH = 16, 8          # iso tile footprint in pixels (2:1, the classic ratio)
 ZOOMS = (1, 2, 4)
 DEFAULT_ZOOM = 2
-REGION_OVERSCAN = 0.18  # total extra world span beyond a full 1x viewport
+REGION_OVERSCAN = 0.04  # small edge safety; 1x should be game, not countryside
 
 
 def required_world_size(viewport, min_zoom=ZOOMS[0]):
@@ -173,6 +182,54 @@ def detail_levels_for_zoom(zoom):
         raise ValueError(f"unsupported zoom: {zoom}")
     levels = ("regional", "gameplay", "inspection")
     return levels[:ZOOMS.index(zoom) + 1]
+
+
+# Population -> RoadNetwork capacity target tuning (see _layout). Squashes
+# the full population range into a target well under road_network.py's
+# empirical bootstrap-tick ceiling (~30,637 for master_seed=20260730),
+# while keeping the mapping strictly increasing.
+POPULATION_CAPACITY_SCALE = 38.0
+SAFE_MAX_CAPACITY = 27_000.0  # margin below the empirical ~30,637 bootstrap-tick ceiling
+
+
+def _road_adjacent_buildable_cells(network, urban):
+    """Cells with cardinal road frontage that aren't already occupied --
+    the minimal 'has road access' rule from the structure-growth spec,
+    without its full lifecycle."""
+    result = []
+    for (rc, rr) in sorted(network.road_cells):
+        for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            cell = (rc + dc, rr + dr)
+            if cell in network.occupied or cell in urban.green_tiles:
+                continue
+            if cell not in result:
+                result.append(cell)
+                network.occupied.add(cell)
+    return result
+
+
+_ARCHETYPE_PALETTE = {
+    "core": ("tower", "midrise", "shop"),
+    "mixed": ("midrise", "block", "shop", "house"),
+    "civic": ("shop", "midrise"),
+    "industrial": ("block", "shop"),
+    "utility": ("block", "shop"),
+}
+
+
+def _pick_archetype(district, col, row):
+    palette = _ARCHETYPE_PALETTE.get(district, _ARCHETYPE_PALETTE["mixed"])
+    index = abs(hash((district, col, row))) % len(palette)
+    return palette[index]
+
+
+def _building_tile(col, row, district, archetype_name):
+    from ui.urban_blocks import UrbanBlock
+    block_archetype = "paved" if district in ("industrial", "utility") else (
+        "civic" if district == "civic" else "urban")
+    return UrbanBlock(col=col, row=row, district=district, archetype=block_archetype,
+                      variant=abs(hash((col, row))) % 10_000, greenery=0.08,
+                      buildings=(archetype_name,))
 
 
 class Camera:
@@ -220,9 +277,11 @@ class Camera:
         self.clamp(viewport, world)
 
 # Freeplay's town is illustrative: changing from a 1 GW grid to a 40 GW region
-# must not turn the city into a different-scale object. Career mode can provide
-# a real `state.population`, which then drives the same layout directly.
-ILLUSTRATIVE_POPULATION = 15_000
+# must not turn the city into a different-scale object. Keep this modest:
+# apparent scale comes from framing and plant placement, not overpopulating the
+# renderer with a dense metro that lags when zoomed.
+ILLUSTRATIVE_POPULATION = 60_000
+PLANT_ART_SCALE = 3
 
 
 def state_population(state):
@@ -250,11 +309,49 @@ RINGS = 8               # light layers; shedding granularity
 ROAD_SPACING = 4        # tiles between local streets (blocks are 3x3)
 ARTERIAL_SPACING = 12   # every Nth street is an arterial: wider, lamp-lit
 
-# How much of the viewport the largest city may cover. Well short of 1.0: the
-# city has to sit IN a landscape, with fields and woodland around it and room
-# for the plants to stand out in open country. A city grown to the frame edge
-# reads as wallpaper and leaves the plants nowhere to go.
-MAX_EXTENT = 0.72
+# How much of the viewport the largest city may cover. The surrounding land is
+# now a narrow readability buffer; 1x should frame the playable city/grid set,
+# not a small town floating in open countryside.
+MAX_EXTENT = 0.58
+DENSE_DOWNTOWN_COL_RADIUS = 32
+DENSE_DOWNTOWN_ROW_RADIUS = 28
+
+
+def _dense_downtown_metric(col, row):
+    x = abs(float(col)) / DENSE_DOWNTOWN_COL_RADIUS
+    y = abs(float(row)) / DENSE_DOWNTOWN_ROW_RADIUS
+    return (x ** 4 + y ** 4) ** 0.25
+
+
+def _dense_downtown_edge(col, row):
+    block_col = int(col) // vc.BLOCK
+    block_row = int(row) // vc.BLOCK
+    n = (block_col * 374761393 + block_row * 668265263 + 0x5A17) & 0xFFFFFFFF
+    n = (n ^ (n >> 13)) * 1274126177 & 0xFFFFFFFF
+    return 0.97 + ((n & 0xFF) / 255.0) * 0.08
+
+
+def _in_dense_downtown(col, row):
+    return _dense_downtown_metric(col, row) <= _dense_downtown_edge(col, row)
+
+
+def _dense_downtown_clear(col, row, radius):
+    return not any(
+        _in_dense_downtown(round(col) + dc, round(row) + dr)
+        for dc in range(-radius, radius + 1)
+        for dr in range(-radius, radius + 1)
+    )
+
+
+def _push_outside_dense_downtown(col, row, radius=3):
+    col, row = float(col), float(row)
+    for _ in range(32):
+        if _dense_downtown_clear(col, row, radius):
+            return col, row
+        length = max(1.0, math.hypot(col, row))
+        col += (col / length) * 2.0
+        row += (row / length) * 2.0
+    return col, row
 
 
 def iso_xy(col, row):
@@ -302,8 +399,8 @@ CANOPY_DARK = (34, 74, 34)
 CANOPY_MID = (56, 112, 48)
 CANOPY_LIGHT = (96, 152, 66)
 
-GRASS = [(86, 132, 58), (94, 142, 62), (78, 122, 52)]
-PARK = [(74, 136, 54), (88, 150, 62)]
+GRASS = [(104, 150, 74), (112, 158, 80), (96, 140, 66)]
+PARK = [(88, 152, 66), (100, 164, 74)]
 WATER = [(58, 110, 190), (68, 124, 202), (48, 96, 172)]
 
 # Farmland is drawn as FIELDS, not as noise. Neighbouring tiles share a crop,
@@ -342,10 +439,20 @@ def _woodland(col, row):
     Clustered, not per-tile: scattering trees uniformly over the countryside
     buries the field pattern in noise and reads as green static. Real land is
     stands of woodland between cultivated blocks."""
-    return (hash((col // WOOD_SIZE, row // WOOD_SIZE, 0x5EED)) >> 5) % 100 < 28
+    return (hash((col // WOOD_SIZE, row // WOOD_SIZE, 0x5EED)) >> 5) % 100 < 10
 
 ROAD_LOCAL = (146, 146, 144)
 ROAD_ARTERIAL = (186, 188, 186)
+
+
+def _road_is_avenue(extra):
+    return extra.avenue if hasattr(extra, "avenue") else bool(extra)
+
+# Transmission conductor + junction-marker colours: flat steel, not glowing —
+# the delivery chain is legible through accurate shape and scale (tall lattice
+# tower vs. short pole vs. a substation yard), not through decorative light.
+CONDUCTOR = (94, 100, 110)
+JUNCTION = (150, 154, 162)
 
 LIGHT_WARM = (255, 168, 66)
 LIGHT_HOT = (255, 232, 186)
@@ -360,8 +467,6 @@ NIGHT_MULT = (42, 46, 68)      # what the unlit city collapses to after dark
 HOUSE_SETS = [
     ((176, 74, 56), (226, 214, 194), (162, 152, 136)),   # red tile
     ((92, 100, 122), (232, 226, 210), (166, 160, 148)),  # slate
-    ((132, 92, 58), (214, 200, 172), (152, 140, 120)),   # brown tile
-    ((72, 108, 88), (226, 220, 202), (160, 154, 142)),   # green metal
     ((158, 116, 72), (206, 178, 150), (146, 124, 104)),  # terracotta
 ]
 SHOP_SETS = [
@@ -475,8 +580,49 @@ def tower(rng):
                      windows=12, lit_frac=0.45)
 
 
-BUILDERS = {"house": house, "shop": shop, "block": block,
-            "midrise": midrise, "tower": tower}
+def _sprite_lights(sprite, rng, tier):
+    lights = pygame.Surface(sprite.get_size(), pygame.SRCALPHA)
+    bounds = sprite.get_bounding_rect()
+    density = {
+        "house": 0.22,
+        "shop": 0.32,
+        "block": 0.45,
+        "midrise": 0.52,
+        "tower": 0.58,
+    }[tier]
+    y_start = bounds.top + max(3, bounds.height // 5)
+    y_end = bounds.bottom - max(3, bounds.height // 8)
+    step_y = 4 if tier in ("house", "shop") else 5
+    for y in range(y_start, y_end, step_y):
+        for x in range(bounds.left + 3, bounds.right - 2, 5):
+            if rng.random() < density and sprite.get_at((x, y)).a > 0:
+                color = LIGHT_HOT if rng.random() < 0.35 else LIGHT_WARM
+                lights.fill(color, (x, y, 1, 2))
+    return lights
+
+
+def _asset_building(tier, rng):
+    entries = assets.iso_building_entries(tier)
+    entry = rng.choice(entries)
+    sprite = assets.iso_sprite(entry["file"])
+    lights = _sprite_lights(sprite, rng, tier)
+    return sprite, lights
+
+
+PROCEDURAL_BUILDERS = {"house": house, "shop": shop, "block": block,
+                       "midrise": midrise, "tower": tower}
+
+
+def _building_builder(tier):
+    def build(rng):
+        try:
+            return _asset_building(tier, rng)
+        except (FileNotFoundError, KeyError, ValueError):
+            return PROCEDURAL_BUILDERS[tier](rng)
+    return build
+
+
+BUILDERS = {tier: _building_builder(tier) for tier in PROCEDURAL_BUILDERS}
 
 
 def _density(d):
@@ -867,10 +1013,16 @@ class PlantSite:
         self.sx, self.sy = sx, sy     # screen anchor, relative to the layer
         self.phase = phase
         self.blade_angle = 0.0
+        self.switchyard_offset = None
+        self.sprite = None
+        self.sprite_offset = None
 
     def switchyard_anchor(self):
         """Decorative line takeoff; intentionally carries no simulation state."""
-        dx, dy = SWITCHYARD_TAKEOFF[self.key]
+        if self.switchyard_offset is not None:
+            dx, dy = self.switchyard_offset
+        else:
+            dx, dy = SWITCHYARD_TAKEOFF[self.key]
         return self.sx + dx, self.sy + dy
 
 
@@ -885,14 +1037,42 @@ class TransformerSite:
         self.buildings = tuple(buildings)
 
 
-def _pylon(surf, x, y, h=11):
-    """A lattice tower: two splayed legs and a crossarm."""
-    pygame.draw.line(surf, STEEL_DARK, (x - 3, y), (x, y - h), 1)
-    pygame.draw.line(surf, STEEL_DARK, (x + 3, y), (x, y - h), 1)
-    pygame.draw.line(surf, STEEL, (x, y - h + 3), (x, y - h), 1)
-    pygame.draw.line(surf, STEEL, (x - 4, y - h + 1), (x + 4, y - h + 1), 1)
-    pygame.draw.line(surf, shade(STEEL_DARK, 0.8), (x - 2, y - h + 5),
-                     (x + 2, y - h + 5), 1)
+def _pylon(surf, x, y, h=18):
+    """A tall lattice HV transmission tower: splayed legs with a lit inner edge,
+    an X-braced body, and three insulated crossarms. Deliberately tall and bold
+    — it is the grid's backbone, and the grid is the hero. The top crossarm
+    (y - h + 2, half-width 6) is where the double-circuit conductors attach; the
+    bake loop uses the same offset, so change them together."""
+    # splayed legs (dark) with a lit inner edge for a touch of fidelity
+    pygame.draw.line(surf, STEEL_DARK, (x - 4, y), (x, y - h), 1)
+    pygame.draw.line(surf, STEEL_DARK, (x + 4, y), (x, y - h), 1)
+    pygame.draw.line(surf, STEEL, (x - 3, y), (x, y - h + 1), 1)
+    # body cross-bracing, two tiers
+    for yy in (y - 3, y - 9):
+        pygame.draw.line(surf, shade(STEEL_DARK, 0.9), (x - 3, yy), (x + 3, yy - 5), 1)
+        pygame.draw.line(surf, shade(STEEL_DARK, 0.9), (x + 3, yy), (x - 3, yy - 5), 1)
+    # three crossarms, widest at the top, insulator drops at the tips
+    for cy, half in ((y - h + 2, 6), (y - h + 7, 5), (y - h + 12, 3)):
+        pygame.draw.line(surf, STEEL, (x - half, cy), (x + half, cy), 1)
+        pygame.draw.line(surf, (162, 166, 176), (x - half, cy), (x - half, cy + 2), 1)
+        pygame.draw.line(surf, (162, 166, 176), (x + half, cy), (x + half, cy + 2), 1)
+    # mast tip
+    pygame.draw.line(surf, STEEL, (x, y - h + 2), (x, y - h - 1), 1)
+
+
+def _pole(surf, x, y, h=6):
+    """A distribution pole: one short post, one crossarm, two insulators.
+    Deliberately small and plain next to `_pylon` — the height difference
+    between a transmission tower (h=18, three crossarms, splayed lattice legs)
+    and this single post is the step-down lesson made visible without a label."""
+    pygame.draw.line(surf, STEEL_DARK, (x, y), (x, y - h), 1)
+    half = 3
+    pygame.draw.line(surf, shade(STEEL_DARK, 0.85), (x - half, y - h + 1),
+                     (x + half, y - h + 1), 1)
+    pygame.draw.line(surf, (150, 154, 162), (x - half, y - h + 1),
+                     (x - half, y - h + 3), 1)
+    pygame.draw.line(surf, (150, 154, 162), (x + half, y - h + 1),
+                     (x + half, y - h + 3), 1)
 
 
 def _span(surf, a, b, sag=3):
@@ -906,15 +1086,32 @@ def _span(surf, a, b, sag=3):
         x = a[0] + (b[0] - a[0]) * f
         y = a[1] + (b[1] - a[1]) * f + math.sin(f * math.pi) * sag
         pts.append((int(x), int(y)))
-    pygame.draw.lines(surf, (58, 62, 70), False, pts, 1)
+    pygame.draw.lines(surf, CONDUCTOR, False, pts, 2)
 
 
 def _substation(surf, x, y):
-    """Where transmission steps back down to distribution."""
-    _lot(surf, x - 16, y - 8, 3, 3)
-    _switchyard(surf, x - 14, y + 6, 3)
-    _switchyard(surf, x - 2, y + 12, 3)
-    _shed(surf, x + 10, y + 2, 1, 1, 7, light=CONCRETE, dark=CONCRETE_DARK)
+    """HV -> distribution step-down yard: a fenced lot packed with clustered
+    transformer banks, a busbar gantry and a control house. Deliberately the
+    biggest piece of grid kit in the countryside — it's the hub every
+    transmission corridor lands at, so it has to read as a real substation."""
+    _lot(surf, x - 20, y - 10, 4, 4)                             # fenced yard
+    # busbar gantry spanning the yard (what the incoming corridor ties into)
+    pygame.draw.line(surf, STEEL, (x - 16, y - 4), (x + 10, y - 4), 1)
+    for gx in range(x - 16, x + 11, 8):
+        pygame.draw.line(surf, STEEL_DARK, (gx, y - 8), (gx, y - 1), 1)
+    # clustered transformer banks, two staggered rows
+    for r in range(2):
+        for c in range(3):
+            _switchyard(surf, x - 16 + c * 9, y + 2 + r * 7, 2)
+    _shed(surf, x + 12, y + 4, 1, 1, 7, light=CONCRETE, dark=CONCRETE_DARK)  # control house
+
+
+def _node(surf, x, y, r=3, color=JUNCTION):
+    """A small flat junction marker at a connection point — a plain filled
+    circle with a dark edge, matching the rest of the kit's flat pixel style.
+    Not a glow: the delivery chain reads through shape and scale, not light."""
+    pygame.draw.circle(surf, STEEL_DARK, (x, y), r + 1)
+    pygame.draw.circle(surf, color, (x, y), r)
 
 
 def _transformer(surf, x, y, detailed=False):
@@ -1153,19 +1350,172 @@ def _draw_plant_static(surf, key, x, y, rng):
         _switchyard(surf, x - 48, y + 61, 2)
 
 
+def _manifest_plant_sprite(key):
+    entry = assets.iso_plant_entry(key)
+    sprite = assets.iso_sprite(entry["file"])
+    if PLANT_ART_SCALE != 1:
+        sprite = pygame.transform.scale(
+            sprite,
+            (sprite.get_width() * PLANT_ART_SCALE,
+             sprite.get_height() * PLANT_ART_SCALE),
+        )
+    base = entry.get("base", [sprite.get_width() // (2 * PLANT_ART_SCALE),
+                              sprite.get_height() // PLANT_ART_SCALE - 2])
+    base = [int(base[0]) * PLANT_ART_SCALE, int(base[1]) * PLANT_ART_SCALE]
+    offset = (-int(base[0]), -int(base[1]))
+    switchyard = entry.get("switchyard_anchor")
+    if switchyard is not None:
+        switchyard = [int(switchyard[0]) * PLANT_ART_SCALE,
+                      int(switchyard[1]) * PLANT_ART_SCALE]
+    visual = entry.get("visual_center", [
+        sprite.get_width() // (2 * PLANT_ART_SCALE),
+        sprite.get_height() // (2 * PLANT_ART_SCALE),
+    ])
+    visual = [int(visual[0]) * PLANT_ART_SCALE,
+              int(visual[1]) * PLANT_ART_SCALE]
+    return sprite, offset, switchyard, visual
+
+
+# target on-screen width (px) for the voxel generation sprites, per tech
+PLANT_VOXEL_WIDTH = {"nuclear": 176, "hydro": 188, "solar": 156, "coal": 156,
+                     "gas": 156, "peaker": 140}
+
+_vbldg_cache = {}
+
+
+# Downtown office towers baked from City Voxel Pack's .obj export (Phase 3
+# terrain revamp) -- a distinct grey office-tower style layered ALONGSIDE the
+# original hand-rendered town pack (apartment/house/mall/school/etc, still the
+# majority and still the better source for that content), not replacing it.
+# Single fixed camera angle only, no rotation manifest -- see TOWN_TOWER_SLUGS.
+TOWN_TOWER_SLUGS = ("building_2", "building_3", "building_4", "building_5")
+
+
+def _voxel_building_sprite(slug, rot):
+    """Cached, scaled town-building sprite for the dense downtown."""
+    key = (slug, rot)
+    spr = _vbldg_cache.get(key)
+    if spr is None:
+        if slug in TOWN_TOWER_SLUGS:
+            raw = va.terrain_sprite("downtown", slug)
+        else:
+            raw = va.sprite(slug, rot)
+        tw = vc.TARGET_W.get(slug, 56)
+        sc = tw / raw.get_width()
+        spr = pygame.transform.smoothscale(
+            raw, (max(1, round(raw.get_width() * sc)), max(1, round(raw.get_height() * sc))))
+        _vbldg_cache[key] = spr
+    return spr
+
+
+_terrain_ground_cache = {}
+_terrain_prop_cache = {}
+# Ground patches are stamped every few tiles (see _bake's wash pre-pass), not
+# once per cell -- a big soft patch of real texture reads as terrain; the same
+# 22px image tiled on every single grid cell read as wallpaper (fixed after
+# the first pass looked like a repeating mustard hex-hatch).
+TERRAIN_GROUND_W = TW * 4.5
+TERRAIN_PROP_W = {"tree_1": 34, "tree_2": 38, "tree_3": 38, "bush_1": 24,
+                  "cactus_1": 22, "cactus_2": 26, "bones_1": 24,
+                  "stone_1": 20, "stone_2": 24}
+
+# Base tint per region so the procedural slab (which shows between the sparse
+# baked patches) already reads as that biome, not flat season-green.
+REGION_TINT = {"desert": (198, 156, 84), "forest": (84, 130, 74), "plains": (152, 140, 96)}
+
+
+def _terrain_ground_sprite(region, name, target_w=TERRAIN_GROUND_W):
+    """Cached, tile-scaled baked-glTF ground patch (see bake_gltf_terrain.py)."""
+    key = (region, name, target_w)
+    spr = _terrain_ground_cache.get(key)
+    if spr is None:
+        raw = va.terrain_sprite(region, name)
+        sc = target_w / raw.get_width()
+        spr = pygame.transform.smoothscale(
+            raw, (max(1, round(raw.get_width() * sc)), max(1, round(raw.get_height() * sc))))
+        _terrain_ground_cache[key] = spr
+    return spr
+
+
+_downtown_road_cache = {}
+DOWNTOWN_ROAD_W = TW * 2.2   # sparse asphalt-texture overlay, not full per-tile tiling
+
+
+def _downtown_road_sprite(name, target_w=DOWNTOWN_ROAD_W):
+    """Cached, tile-scaled baked-glTF road patch (asphalt texture layered over
+    the flat vroad slab -- see _bake's 'vroad' branch). Stamped sparsely
+    (intersections + occasional straight-run tiles), same "oversized patch,
+    not per-cell tiling" lesson as the ground wash: the flat slab underneath
+    already guarantees a fully connected street grid regardless of where
+    these texture patches land, so they don't need pixel-perfect seams."""
+    key = (name, target_w)
+    spr = _downtown_road_cache.get(key)
+    if spr is None:
+        raw = va.terrain_sprite("downtown", name)
+        sc = target_w / raw.get_width()
+        spr = pygame.transform.smoothscale(
+            raw, (max(1, round(raw.get_width() * sc)), max(1, round(raw.get_height() * sc))))
+        _downtown_road_cache[key] = spr
+    return spr
+
+
+def _terrain_prop_sprite(region, name):
+    """Cached, scaled baked-glTF decoration prop (tree/cactus/stone/bones)."""
+    key = (region, name)
+    spr = _terrain_prop_cache.get(key)
+    if spr is None:
+        raw = va.terrain_sprite(region, name)
+        tw = TERRAIN_PROP_W.get(name, 20)
+        sc = tw / raw.get_width()
+        spr = pygame.transform.smoothscale(
+            raw, (max(1, round(raw.get_width() * sc)), max(1, round(raw.get_height() * sc))))
+        _terrain_prop_cache[key] = spr
+    return spr
+
+
 def _plant_static_sprite(key, rng):
-    """Render one plant into a tight local surface and return (sprite, offset)."""
+    """Return (sprite, offset). Prefer the cohesive voxel generation sprite;
+    fall back to the manifest sprite, then procedural art (e.g. wind)."""
+    slug = va.GEN_FOR_PLANT.get(key)
+    if slug and va.has(slug):
+        raw = va.sprite(slug, 0)
+        tw = PLANT_VOXEL_WIDTH.get(key, 156)
+        sc = tw / raw.get_width()
+        spr = pygame.transform.smoothscale(
+            raw, (max(1, round(raw.get_width() * sc)), max(1, round(raw.get_height() * sc))))
+        # anchor bottom-centre on the plant tile's front
+        offset = (-spr.get_width() // 2, TH - spr.get_height())
+        return spr, offset
+    try:
+        sprite, offset, _switchyard, _visual = _manifest_plant_sprite(key)
+        return sprite, offset
+    except (FileNotFoundError, KeyError, ValueError):
+        pass
     origin = (140, 90)
     canvas = pygame.Surface((280, 180), pygame.SRCALPHA)
     _draw_plant_static(canvas, key, origin[0], origin[1], rng)
     bounds = canvas.get_bounding_rect()
     sprite = canvas.subsurface(bounds).copy()
-    return sprite, (bounds.left - origin[0], bounds.top - origin[1])
+    offset = (bounds.left - origin[0], bounds.top - origin[1])
+    if PLANT_ART_SCALE != 1:
+        sprite = pygame.transform.scale(
+            sprite,
+            (sprite.get_width() * PLANT_ART_SCALE,
+             sprite.get_height() * PLANT_ART_SCALE),
+        )
+        offset = (offset[0] * PLANT_ART_SCALE, offset[1] * PLANT_ART_SCALE)
+    return sprite, offset
 
 
 def _draw_plant_live(layer, site, level, t, night):
     """Per-frame animation for one plant, driven by how hard it is running."""
     x, y, key = site.sx, site.sy, site.key
+    # Voxel-sprite plants are static for now (animation deferred); their live
+    # plume/blade offsets were tuned to the old procedural art. Wind (no voxel
+    # asset) still animates its turbine below.
+    _slug = va.GEN_FOR_PLANT.get(key)
+    if _slug and va.has(_slug):
+        return
     # Aviation warning beacons on anything tall. Slow pulse, tiny area — this
     # is the one thing on a plant that stays lit whether or not it is running.
     def beacon(bx, by, period=2.6):
@@ -1430,10 +1780,15 @@ class IsoCity:
         self.font_label = font_label or font
         self.t = 0.0
         self._key = None          # (rect size, population bucket, fleet)
+        self._tiles = {}          # populated by _layout(); safe to read before prepare()
+        self._road_network = None   # persistent RoadNetwork; created once, only grows
         self._base_day = None
         self._base_night = None
         self._detail_day = {}
         self._detail_night = {}
+        # Transmission layer, baked in _bake and composited flat over the city
+        # in draw() — no glow, no dimming scrim.
+        self._transmission = None
         self._rings = []          # RINGS light layers, core outward
         self._cum = None          # rings 0..k-1 flattened, rebuilt when k moves
         self._cum_k = -1
@@ -1443,11 +1798,14 @@ class IsoCity:
         self.camera = None
         self._world_rect = pygame.Rect(0, 0, 1, 1)
         self._plants = []
+        self._city_centers = []
         self._vehicles = []
         self._road_neighbors = {}
+        self._transmission_routes = []
+        self._transmission3d = ()
         self._transformers = []
-        self._distribution_flows = []
-        self._service_flows = []
+        self._distribution_pulses = []
+        self._service_pulses = []
         self._origin = (0, 0)
         # overload state. Fires persist across frames, so they live on the
         # instance rather than being re-rolled from the clock each draw.
@@ -1477,127 +1835,135 @@ class IsoCity:
         rng = random.Random(20260730)
         u_max, v_max = self._extents(rect)
 
-        # Candidate tiles, nearest-downtown first.
-        #
-        # The generated region is a RECTANGLE in iso axis space large enough to
-        # cover the whole viewport, not just the town ellipse: power plants sit
-        # outside the built edge, and with terrain stopping at the ellipse they
-        # stood on empty background. The city ellipse is then carved out of this
-        # landscape, and everything past its edge is countryside.
-        u_lim, v_lim = u_max * 1.06, v_max * 1.75
-        m = int((u_lim + v_lim) / 2) + 2
-        coords = []
-        for col in range(-m, m + 1):
-            for row in range(-m, m + 1):
-                u, v = col - row, col + row
-                if abs(u) > u_lim or abs(v) > v_lim:
-                    continue
-                # A clean ellipse reads as a machined lens. Stacked harmonics on
-                # the radius push the boundary into lobes and notches — towns
-                # grow along corridors and stall against terrain, so the outline
-                # should be lumpy at several scales, not merely dented.
-                th = math.atan2(v / v_max, u / u_max)
-                coords.append((math.hypot(u / u_max, v / v_max) / _edge_wobble(th),
-                               col, row))
-        coords.sort()
-
-        # The river runs along the long axis, so it reads across a wide
-        # viewport, and wanders enough not to look surveyed.
-        def river_v(u):
-            return 0.30 * v_max + 0.16 * v_max * math.sin(u / (u_max * 0.34))
-
-        # How far the town reaches is SOLVED FOR, not chosen: find the smallest
-        # extent whose building stock houses the population. Capacity rises
-        # monotonically with extent, so a bisection lands it in a few passes,
-        # and the estimator below is the exact expectation of the sampling loop
-        # (same mix table), so the two cannot drift apart.
-        buildable = [(e, col, row) for e, col, row in coords
-                     if abs((col + row) - river_v(col - row)) >= 1.4
-                     and col % ROAD_SPACING != 0 and row % ROAD_SPACING != 0]
-
-        def capacity_at(extent):
-            total = 0.0
-            for e, _c, _r in buildable:
-                if e > extent:
+        # Population -> capacity target for the persistent road network.
+        # CAPACITY_PER_ROAD_CELL in road_network.py is illustrative, not tied
+        # to a real units system. A raw 1:1 population->capacity mapping was
+        # tried first and empirically blows past road_network.py's
+        # MAX_BOOTSTRAP_TICKS ceiling (BootstrapExhausted around capacity
+        # ~30,780 for master_seed=20260730) for any population above
+        # roughly 30,000 -- confirmed against every population this file's
+        # tests actually exercise, including test_city_size_tracks_population's
+        # highest bucket (430,000) and test_baked_city_center_sprites_have_room_in_world's
+        # 200,000. sqrt-compression keeps every realistic population under a
+        # safe margin below that empirical ceiling while still producing a
+        # strictly increasing target across population steps.
+        target_capacity = min(SAFE_MAX_CAPACITY,
+                              POPULATION_CAPACITY_SCALE * math.sqrt(max(0.0, population)))
+        if self._road_network is None:
+            self._road_network = bootstrap_network(target_capacity=target_capacity,
+                                                    master_seed=20260730)
+        elif self._road_network.capacity < target_capacity:
+            # Live incremental growth: run ticks against the SAME persistent
+            # network, never a fresh one, until this bucket's target is met
+            # or ticks are exhausted for this bake.
+            for _ in range(50):
+                if self._road_network.capacity >= target_capacity:
                     break
-                d = e / max(0.02, extent)
-                total += _density(d) * _expected_capacity(d, population)
-            return total
+                result = grow_tick(self._road_network, target_capacity=target_capacity)
+                if result == TickResult.NO_CAPACITY_NEEDED:
+                    break
 
-        if capacity_at(MAX_EXTENT) <= population:
-            extent = MAX_EXTENT     # a metro that has outgrown the viewport
-        else:
-            lo, hi = 0.02, MAX_EXTENT
-            for _ in range(24):
-                mid = (lo + hi) / 2.0
-                if capacity_at(mid) < population:
-                    lo = mid
-                else:
-                    hi = mid
-            extent = hi
+        network = self._road_network
+        min_c, max_c, min_r, max_r = network.frontier_bounds or (0, 0, 0, 0)
+        # Extent: capacity-driven (network.capacity is monotonic
+        # non-decreasing by construction -- RoadNetwork.capacity only ever
+        # increases via commit_project -- so this alone guarantees strict
+        # monotonicity across population steps, which raw frontier_bounds
+        # could not: grow_tick prefers infill over outward extension, so the
+        # frontier barely moves at low capacities even as roads/capacity
+        # climb substantially). Blended with the real geometric frontier
+        # distance as a floor, so _extent never reports a smaller footprint
+        # than what's actually built, and still tracks real geometry once
+        # the frontier does extend that far.
+        far_u = max(abs(min_c - min_r), abs(max_c - max_r)) / max(1.0, u_max)
+        far_v = max(abs(min_c + min_r), abs(max_c + max_r)) / max(1.0, v_max)
+        geometric_extent = math.hypot(far_u, far_v)
+        capacity_frac = min(1.0, network.capacity / SAFE_MAX_CAPACITY)
+        self._extent = min(0.94, max(0.30, max(geometric_extent,
+                                                0.30 + capacity_frac * 0.64)))
 
-        # Lay the town down at that extent. Density stays high right out to the
-        # edge and then stops: real towns end abruptly against farmland rather
-        # than fading out, and a gradual fade is exactly what made a
-        # 10,000-person town read as a hamlet of fifty.
-        # Substation sites, reserved BEFORE anything is built on them. Doing it
-        # inside this loop rather than bulldozing afterwards keeps `buildings`
-        # and `_priority` consistent — a building that was placed and then
-        # deleted would still be carrying a lighting rank.
-        sub_sites, sub_tiles = self._substation_sites(extent, u_max, v_max)
+        urban = build_urban_layout(rect, tuple(fleet))   # districts, campuses, civic
+                                                           # anchors, green tiles -- still
+                                                           # a one-shot deterministic stamp,
+                                                           # UNCHANGED; only ROADS/BUILDINGS
+                                                           # now come from the persistent network
+        self._urban_layout = urban
+
+        def river_v(u):
+            return 0.34 * v_max + 0.10 * v_max * math.sin(
+                u / max(1.0, u_max * 0.42))
 
         tiles = {}
         buildings = []
-        for e, col, row in coords:
-            u, v = col - row, col + row
-            if abs(v - river_v(u)) < 1.4:
-                tiles[(col, row)] = ("water", None)
-                continue
-            if e > extent:
-                continue
-            if (col, row) in sub_tiles:
-                tiles[(col, row)] = ("grass", None)
-                continue
-            if col % ROAD_SPACING == 0 or row % ROAD_SPACING == 0:
-                tiles[(col, row)] = ("road", (col % ARTERIAL_SPACING == 0
-                                              or row % ARTERIAL_SPACING == 0))
-                continue
-            d = e / max(0.02, extent)
-            if rng.random() >= _density(d):
-                tiles[(col, row)] = ("park" if rng.random() < 0.45 else "grass", None)
-                continue
-            name = _tier(d, population, rng)
-            tiles[(col, row)] = ("bldg", name)
-            buildings.append((col, row, name, e))
+        for pos, road in network.roads.items():
+            tiles[pos] = ("road", road)
+        # Buildings: one per road-adjacent buildable cell the network has
+        # opened up so far -- minimal placement (Task 7), not the full
+        # structure lifecycle (deferred to sub-project B). Reuses the
+        # existing district/archetype selection from urban_blocks.py.
+        buildable = _road_adjacent_buildable_cells(network, urban)
+        for (col, row) in buildable:
+            e = math.hypot((col - row) / u_max, (col + row) / v_max)
+            angle = math.atan2((col + row) / v_max, (col - row) / u_max)
+            district = _district(e, angle)
+            archetype_name = _pick_archetype(district, col, row)
+            tiles[(col, row)] = ("urban_block", _building_tile(col, row, district, archetype_name))
+            buildings.append((col, row, archetype_name, e))
+        for pos in urban.green_tiles:
+            if pos not in tiles:
+                tiles[pos] = ("park", None)
+        for campus in urban.campuses.values():
+            cc, rr = round(campus.col), round(campus.row)
+            for dc in range(-campus.radius, campus.radius + 1):
+                for dr in range(-campus.radius, campus.radius + 1):
+                    if abs(dc) + abs(dr) <= campus.radius + 1:
+                        tiles[(cc + dc, rr + dr)] = ("campus", campus.key)
+        # Dense voxel downtown: a broad, superellipse metro footprint with
+        # slight block-level edge variation. It is intentionally not a circle:
+        # downtown should read like a planned city grid pushing into the plant
+        # ring, with less arbitrary countryside buffer.
+        for bx in range(-DENSE_DOWNTOWN_COL_RADIUS - vc.BLOCK,
+                        DENSE_DOWNTOWN_COL_RADIUS + vc.BLOCK + 1):
+            for by in range(-DENSE_DOWNTOWN_ROW_RADIUS - vc.BLOCK,
+                            DENSE_DOWNTOWN_ROW_RADIUS + vc.BLOCK + 1):
+                if not _in_dense_downtown(bx, by):
+                    continue
+                if tiles.get((bx, by), (None,))[0] == "road":
+                    continue                      # keep real roads (traffic drives them)
+                if vc.is_street(bx, by):
+                    tiles[(bx, by)] = ("vroad", None)
+                elif vc.is_building(bx, by):
+                    slug = vc.building_for(bx, by, min(1.0, _dense_downtown_metric(bx, by)))
+                    tiles[(bx, by)] = ("voxel_bldg", slug)
+                else:
+                    tiles[(bx, by)] = ("pad", None)
 
-        # Everything past the town edge is countryside: woodland thinning into
-        # cultivated fields. It also gives the plants something to stand on.
-        for e, col, row in coords:
-            if (col, row) in tiles:
-                continue
-            r = rng.random()
-            if _woodland(col, row):
-                kind = "tree" if r < 0.52 else "grass"
-            elif r < 0.04:
-                kind = "tree"                 # a hedgerow standard or two
-            elif r < 0.76:
-                kind = "farm"
-            else:
-                kind = "grass"
-            tiles[(col, row)] = (kind, None)
+        # Restore the countryside the road-network layout stopped generating, and
+        # tag edge mountains. Fills the viewport so the city never floats on void.
+        # `rect` here is the world rect; the city is centred on tile (0, 0).
+        w, h = rect.width, rect.height
+        ox, oy = w // 2, int(h * 0.56)
+        span = int(w / TW) + 4
+        for col in range(-span, span):
+            for row in range(-span, span):
+                pos = (col, row)
+                if pos in tiles:
+                    continue
+                sx, sy = iso_xy(col, row)
+                sx += ox
+                sy += oy
+                if not (-TW * 3 < sx < w + TW * 3 and -400 < sy < h + TH * 3):
+                    continue
+                elev = vt.elevation(col, row, 0.0, 0.0, start=52.0, full=72.0)
+                if elev > 0:
+                    tiles[pos] = ("mountain", elev)
+                    continue
+                u = col - row
+                if abs((col + row) - river_v(u)) < 2.4:
+                    tiles[pos] = ("water", None)
+                else:
+                    tiles[pos] = (vt.material_at(col, row), None)
 
-        # Shed order.
-        #
-        # Utilities do not shed a neat disc from the fringe inward — they drop
-        # FEEDER CIRCUITS, and a feeder serves one neighbourhood-sized patch
-        # while its neighbours stay live. So a half-supplied city is patchy:
-        # dark blocks scattered right across the map, not a shrinking bullseye.
-        # What survives the longest is the core, because downtown circuits carry
-        # hospitals, signals and substations and are shed last by policy.
-        #
-        # priority = CORE_BIAS * (how far out you are) + the rest * (which
-        # feeder you happen to sit on). The feeder term is drawn per PATCH, not
-        # per building, which is what makes outages come in blocks.
         feeders = {}
 
         def feeder_roll(col, row):
@@ -1606,30 +1972,99 @@ class IsoCity:
                 feeders[fk] = random.Random(hash(fk) & 0xFFFF).random()
             return feeders[fk]
 
-        lightable = [(col, row, e) for col, row, _name, e in buildings]
-        lightable += [(col, row, e) for e, col, row in coords
-                      if tiles.get((col, row), (None, None))[0] == "road"
-                      and tiles[(col, row)][1]]
+        lightable = {
+            (col, row): e for col, row, _name, e in buildings
+        }
+        lightable.update({
+            (col, row): math.hypot((col - row) / u_max,
+                                   (col + row) / v_max)
+            for (col, row), (kind, road) in tiles.items()
+            if kind == "road" and road.avenue
+        })
+        # the dense voxel downtown lights up too (windows + street lamps)
+        lightable.update({
+            (col, row): math.hypot((col - row) / u_max, (col + row) / v_max)
+            for (col, row), (kind, _e) in tiles.items()
+            if kind in ("voxel_bldg", "vroad")
+        })
         scored = []
-        for col, row, e in lightable:
-            e_norm = min(1.0, e / max(0.02, extent))
+        for (col, row), e in lightable.items():
+            e_norm = min(1.0, e / 0.72)
             scored.append((CORE_BIAS * e_norm
                            + (1.0 - CORE_BIAS) * feeder_roll(col, row), col, row))
-        # Rank-normalise so `priority < served` really does light that share of
-        # the city. The raw score is heavily clustered, and without ranking a
-        # nominal 15% lit came out near 1% and the 04:00 city was black.
         scored.sort()
         n = max(1, len(scored))
-        self._priority = {(c, r): i / n for i, (_s, c, r) in enumerate(scored)}
+        self._priority = {
+            (col, row): index / n
+            for index, (_score, col, row) in enumerate(scored)
+        }
 
-        self._sub_sites = sub_sites
+        # ONE switchyard adjacent to the city (front edge of downtown): every
+        # plant's transmission corridor terminates here, and distribution feeders
+        # pulse from here into downtown. Single hub keeps corridors convergent and
+        # clear of the edge dials.
+        # Just OUTSIDE the downtown, front-centre (toward the camera): transmission
+        # arrives here from the plant ring without crossing the city, and
+        # distribution pulses from here up into downtown.
+        # Two switchyards sitting OUTSIDE the dense downtown (dt_r=24), in the
+        # clear ring between the city edge and the plant ring: one front-centre,
+        # one top-centre. Transmission terminates here without crossing the city;
+        # distribution pulses inward from here into downtown.
+        self._sub_sites = [
+            (DENSE_DOWNTOWN_COL_RADIUS + 8, DENSE_DOWNTOWN_ROW_RADIUS + 6),
+            (-(DENSE_DOWNTOWN_COL_RADIUS + 8), -(DENSE_DOWNTOWN_ROW_RADIUS + 6)),
+        ]
+        self._switchyard_tile = self._sub_sites[0]
         self._tiles = tiles
         self._buildings = buildings
-        self._extent = extent
+        self._city_centers = self._choose_city_centers(buildings, tiles)
         self._u_max, self._v_max = u_max, v_max
         self._place_plants(rect, fleet, rng, river_v)
+        # Give each generating technology its own clear, flat floor: replace any
+        # mountain/greenery/water tiles in a pad around the plant with flat "pad"
+        # ground so no plant sits on a mountainside or in the trees.
+        for site in self._plants:
+            pc, pr = round(site.col), round(site.row)
+            rad = 2 if site.key == "hydro" else 3
+            for dc in range(-rad, rad + 1):
+                for dr in range(-rad, rad + 1):
+                    if abs(dc) + abs(dr) > rad + 1:
+                        continue
+                    t = (pc + dc, pr + dr)
+                    k = self._tiles.get(t, (None,))[0]
+                    if k in ("mountain", "farm", "grass", "tree", "water", "park", None):
+                        self._tiles[t] = ("pad", None)
+        # clear a flat pad for each switchyard (override even city tiles so the
+        # yard sits in its own clearing, readable as a hub)
+        for swc, swr in self._sub_sites:
+            for dc in range(-3, 4):
+                for dr in range(-3, 4):
+                    if abs(dc) + abs(dr) <= 4:
+                        t = (swc + dc, swr + dr)
+                        if self._tiles.get(t, (None,))[0] != "road":
+                            self._tiles[t] = ("pad", None)
         self._make_roads(rng)
         return rng
+
+    def _choose_city_centers(self, buildings, tiles):
+        entries = assets.iso_city_center_entries()
+        chosen = []
+        used = set()
+        central = sorted(
+            (item for item in buildings
+             if abs(item[0] - item[1]) <= 10 and abs(item[0] + item[1]) <= 10),
+            key=lambda item: (item[3], item[0] + item[1], item[0] - item[1]),
+        )
+        for index, (col, row, _name, _e) in enumerate(central):
+            if len(chosen) >= min(3, len(entries)):
+                break
+            if (col, row) in used:
+                continue
+            entry = entries[index % len(entries)]
+            tiles[(col, row)] = ("bldg", "tower")
+            chosen.append((col, row, entry))
+            used.add((col, row))
+        return chosen
 
     # Where each plant sits on the ring around town, as an angle. Chosen to
     # land in the CORNERS of the viewport: the city is an ellipse, so at 40-ish
@@ -1637,8 +2072,8 @@ class IsoCity:
     # and still on screen, which is the only region that stays free even when
     # the city has grown to fill the whole rect.
     _PLANT_ANGLES = {
-        "coal": 143.0, "nuclear": 218.0, "gas": 37.0,
-        "peaker": 322.0, "wind": 108.0, "solar": 288.0,
+        "coal": 236.0, "nuclear": 200.0, "gas": 37.0,
+        "peaker": 322.0, "wind": 108.0, "solar": 300.0,
         # Instructional Day 1 only, and never on screen beside gas: the
         # generic valve loses its capacity the moment gas is unlocked.
         "generic": 37.0,
@@ -1653,34 +2088,32 @@ class IsoCity:
         if not fleet:
             return
         u_max, v_max = self._u_max, self._v_max
+        urban = getattr(self, "_urban_layout", None)
         for key in ("hydro", "generic", "coal", "nuclear", "gas", "peaker",
                     "wind", "solar"):
             if key not in fleet:
                 continue
+            # Every plant sits on its OWN distinct bearing in the clear ring
+            # between the built city and the mountains (which start ~tile-dist 36),
+            # so they never stack on each other, on the city, or on a mountainside.
             if key == "hydro":
-                # A dam has to be IN the channel. Walk upstream until the river
-                # is clear of the built-up area, then sit on it.
-                r = max(self._extent, 0.24)
-                for _ in range(24):
-                    u = -u_max * r
-                    v = river_v(u)
-                    th = math.atan2(v / v_max, u / u_max)
-                    if math.hypot(u / u_max, v / v_max) > self._extent * _edge_wobble(th) * 1.18:
-                        break
-                    r += 0.05
+                # A dam has to be IN the channel: sit on the river in the SAME
+                # clear ring as the other plants (capped below the mountains), not
+                # walked out to the horizon.
+                r = min(0.46, max(self._extent * 1.0, 0.40))
+                u = -u_max * r
+                v = river_v(u)
                 col, row = (u + v) / 2.0, (v - u) / 2.0
-                # the wall extends DAM_D tiles along +row, so shift the anchor
-                # back by half of that to straddle the water rather than start
-                # at it and run off into the fields
                 row -= DAM_D / 2.0
             else:
                 a = math.radians(self._PLANT_ANGLES[key])
-                # Clear the town's ACTUAL edge on this bearing, not a nominal
-                # circle — the boundary bulges by up to ~50% on some bearings.
-                ring = max(self._extent * _edge_wobble(a) * 1.30 + 0.07, 0.34)
+                # Ring capped below the mountain radius so a plant never lands on
+                # a slope; floored so it clears the built city edge.
+                ring = min(0.66, max(self._extent * _edge_wobble(a) * 0.9 + 0.05, 0.56))
                 u = u_max * ring * math.cos(a)
                 v = v_max * ring * math.sin(a)
                 col, row = (u + v) / 2.0, (v - u) / 2.0
+            col, row = _push_outside_dense_downtown(col, row, radius=3)
             sx, sy = iso_xy(col, row)
             # Clamp the actual artwork bounds, not a guessed radius. Solar is
             # intentionally asymmetric around its logical origin; the old
@@ -1695,8 +2128,19 @@ class IsoCity:
             site = PlantSite(key, col, row, sx, sy, rng.random())
             site.sprite = sprite
             site.sprite_offset = offset
-            site.visual_dx = offset[0] + sprite.get_width() / 2.0
-            site.visual_dy = offset[1]
+            try:
+                _sprite, _offset, switchyard, visual = _manifest_plant_sprite(key)
+            except (FileNotFoundError, KeyError, ValueError):
+                switchyard, visual = None, None
+            if switchyard is not None:
+                site.switchyard_offset = (switchyard[0] + offset[0],
+                                          switchyard[1] + offset[1])
+            if visual is not None:
+                site.visual_dx = offset[0] + visual[0]
+                site.visual_dy = offset[1] + visual[1]
+            else:
+                site.visual_dx = offset[0] + sprite.get_width() / 2.0
+                site.visual_dy = offset[1] + sprite.get_height() / 2.0
             self._plants.append(site)
 
     # -- transmission ------------------------------------------------------
@@ -1728,36 +2172,57 @@ class IsoCity:
         return x + off[0], y + off[1]
 
     def _route_transmission(self, ox, oy):
-        """One straight corridor per plant to its nearest substation.
-
-        Straight, not street-following: real transmission runs a cleared
-        corridor cross-country, and the plants already sit outside the built
-        edge, so the line only ever crosses fields and the fringe.
-        """
+        """Route plant conductors to substations, using streets in urban maps."""
         self._routes = []
+        self._transmission_routes = self._routes
         self._subs_used = []
         if not self._plants or not self._sub_sites:
             return
         subs = [(iso_xy(c, r)[0] + ox, iso_xy(c, r)[1] + oy) for c, r in self._sub_sites]
+        urban = getattr(self, "_urban_layout", None)
+        if urban is not None:
+            def screen(tile):
+                x, y = iso_xy(*tile)
+                return x + ox + TW // 2, y + oy + TH // 2
+
+            def add_tile(points, tile):
+                point = screen(tile)
+                if point != points[-1]:
+                    points.append(point)
+
+            def central_route_tiles(entry, exit_tile):
+                central = nearest_road_tile(urban, 0, 0)
+                tiles = [entry]
+                for target in (central, exit_tile):
+                    segment = road_path_tiles(urban, tiles[-1], target)
+                    for tile in segment[1:]:
+                        if tile != tiles[-1]:
+                            tiles.append(tile)
+                return tiles
+
         used = set()
         for site in self._plants:
-            start = self._takeoff(site.key, site.sx + ox, site.sy + oy)
+            ax, ay = site.switchyard_anchor()
+            start = (ax + ox, ay + oy)
+            # DIRECT corridor plant -> switchyard. Electrons flow straight to the
+            # yard and terminate there -- they must NOT detour through downtown
+            # (distribution, below, is what carries power from the yard into town).
             i = min(range(len(subs)),
                     key=lambda k: math.hypot(subs[k][0] - start[0],
                                              subs[k][1] - start[1]))
             used.add(i)
-            path = street_route((site.col, site.row), self._sub_sites[i],
-                                start, subs[i], (ox, oy))
-            self._routes.append((site.key, i, path))
-        # only substations something actually feeds get built
+            mx, my = (start[0] + subs[i][0]) / 2.0, (start[1] + subs[i][1]) / 2.0
+            self._routes.append((site.key, i, [start, (mx, my), subs[i]]))
+            self._arc_points.append((mx, my))
         self._subs_used = sorted(used)
         self._sub_screen = subs
+        return
 
     def _build_distribution(self, ox, oy):
         """Connect each feeder-sized building cluster to its nearest substation."""
         self._transformers = []
-        self._distribution_flows = []
-        self._service_flows = []
+        self._distribution_pulses = []
+        self._service_pulses = []
         if not self._subs_used:
             return
         groups = {}
@@ -1777,9 +2242,8 @@ class IsoCity:
             self._transformers.append(site)
             route = street_route(self._sub_sites[sub_index], (col, row),
                                  self._sub_screen[sub_index], point, (ox, oy))
-            self._distribution_flows.append(
-                (index, Flow(route, cap=10,
-                             seed=abs(hash(("tx", group_key))) & 0xFFFF)))
+            self._distribution_pulses.append(
+                (index, LinePulse(route, seed=abs(hash(("tx", group_key))) & 0xFFFF)))
             # A couple of endpoint branches make the final hop into the blocks
             # legible without covering the whole city in animated lines.
             for end_col, end_row in buildings[::max(1, len(buildings) // 2)][:2]:
@@ -1787,9 +2251,8 @@ class IsoCity:
                 end = (ex + ox + TW // 2, ey + oy + TH // 2)
                 route = street_route((col, row), (end_col, end_row),
                                      point, end, (ox, oy))
-                self._service_flows.append(
-                    (index, Flow(route, cap=5,
-                                 seed=abs(hash(("svc", end_col, end_row))) & 0xFFFF)))
+                self._service_pulses.append(
+                    (index, LinePulse(route, seed=abs(hash(("svc", end_col, end_row))) & 0xFFFF)))
 
     def _make_roads(self, rng):
         """Build the street graph and seed vehicles on connected road edges."""
@@ -1808,7 +2271,8 @@ class IsoCity:
             self._vehicles.append(_Vehicle(tile, next_tile, rng))
 
     # -- baking ------------------------------------------------------------
-    def _bake(self, rect, population, fleet):
+    def _bake(self, rect, population, fleet, ramp_by_key=None):
+        ramp_by_key = ramp_by_key or {}
         # The art is authored on a 16x8 logical pixel grid and displayed at the
         # default 2x camera zoom, giving a crisp 32x16 master tile. Baking the
         # compact logical world once keeps all zoom levels cheap and avoids a
@@ -1834,27 +2298,154 @@ class IsoCity:
         rings = [pygame.Surface((w, h), pygame.SRCALPHA) for _ in range(RINGS)]
 
         srng = random.Random(4242)
+        urban = getattr(self, "_urban_layout", None)
+        season = getattr(self, "_pending_season", "summer")
+        self._bake_season = season
+        pal = vt.palette(season)
+        region_code = getattr(self, "_pending_region", None)
+        biome_weights = vt.region_weighted_biomes(region_code)
+
+        # Regional ground wash: sparse, oversized baked-glTF patches (real
+        # desert/forest/plains texture) drawn once, BEFORE the per-tile loop,
+        # so they always sit underneath every tile/building/mountain baked
+        # afterward regardless of iso depth order -- this is a background
+        # wash, not a tile that needs occlusion. A first pass stamped a small
+        # baked image on every single grid cell instead and produced a
+        # repeating hex-hatch "wallpaper" look; sparse+oversized+jittered
+        # patches read as organic ground instead.
+        if season != "winter" and not terrain3d.is_enabled():
+            wash_rng = random.Random(777)
+            countryside = [(c, r) for (c, r), (k, _) in self._tiles.items()
+                           if k in ("grass", "farm")]
+            if countryside:
+                cols = [c for c, _ in countryside]
+                rows = [r for _, r in countryside]
+                STEP = 5
+                for wc in range(min(cols), max(cols) + 1, STEP):
+                    for wr in range(min(rows), max(rows) + 1, STEP):
+                        jc = wc + wash_rng.randint(-2, 2)
+                        jr = wr + wash_rng.randint(-2, 2)
+                        if self._tiles.get((jc, jr), (None,))[0] not in ("grass", "farm"):
+                            continue
+                        region = vt.region_of(jc, jr, 0.0, 0.0, weights=biome_weights)
+                        variants = vt.GROUND_VARIANTS.get(region)
+                        if not variants:
+                            continue
+                        gname = variants[wash_rng.randrange(len(variants))]
+                        if not va.has_terrain(region, gname):
+                            continue
+                        wsx, wsy = iso_xy(jc, jr)
+                        wsx += ox
+                        wsy += oy
+                        scale = TERRAIN_GROUND_W * (0.85 + 0.3 * wash_rng.random())
+                        gspr = _terrain_ground_sprite(region, gname, target_w=scale)
+                        gpos = (wsx + TW // 2 - gspr.get_width() // 2,
+                               wsy + TH // 2 - gspr.get_height() // 2)
+                        day.blit(gspr, gpos)
+                        gnd = gspr.copy()
+                        gnd.fill(NIGHT_MULT + (255,), None, pygame.BLEND_RGB_MULT)
+                        night.blit(gnd, gpos)
+
         for (col, row) in sorted(self._tiles, key=lambda t: t[0] + t[1]):
             kind, extra = self._tiles[(col, row)]
+            if terrain3d.is_enabled() and terrain3d.covers_tile_kind(kind):
+                continue
             sx, sy = iso_xy(col, row)
             sx += ox
             sy += oy
-            if not (-TW * 3 < sx < w + TW * 3 and -200 < sy < h + TH * 3):
+            if not (-TW * 3 < sx < w + TW * 3 and -400 < sy < h + TH * 3):
                 continue
             d = diamond(sx, sy)
 
+            if kind == "mountain":
+                elev_px = extra
+                jit = 0.9 + 0.2 * srng.random()
+                # snow caps only in winter; other seasons keep the region rock
+                # colour (a lighter rock on the true peaks), never always-white.
+                cap = pal["snow"] if (season == "winter" and elev_px >= 8) else (
+                    shade(pal["rock"], 1.2) if elev_px >= 12 else None)
+                height = elev_px * 2 + vt.VOX_DEPTH
+                vt.column(day, sx, sy, height, pal["rock"], cap=cap, jit=jit)
+                vt.column(night, sx, sy, height, shade(pal["rock"], 0.34),
+                          cap=shade(cap, 0.34) if cap else None, jit=jit)
+                continue
+
             if kind == "water":
-                c = srng.choice(WATER)
-                pygame.draw.polygon(day, c, d)
-                pygame.draw.polygon(night, shade(c, 0.30), d)
+                c = pal["water"]
+                vt.slab(day, sx, sy, c)
+                vt.slab(night, sx, sy, shade(c, 0.30))
+                continue
+            if kind == "road" and hasattr(extra, "role"):
+                draw_urban_road(day, sx, sy, extra)
+                draw_urban_road(night, sx, sy, extra, night=True)
+                if extra.avenue:
+                    ring = rings[self._ring_of(self._priority.get((col, row), 1.0))]
+                    ring.fill((*LIGHT_WARM, 210), (sx + TW // 2, sy + TH // 2, 2, 1))
+                continue
+            if kind == "urban_block":
+                seed = abs(hash(("urban_block", col, row))) & 0xFFFF
+                draw_urban_block(day, sx, sy, extra, random.Random(seed))
+                draw_urban_block(night, sx, sy, extra, random.Random(seed), night=True)
+                role = urban.civic.get((col, row)) if urban is not None else None
+                if role is not None:
+                    civic_seed = abs(hash(("civic", role, col, row))) & 0xFFFF
+                    draw_municipal_civic(day, sx, sy, role, random.Random(civic_seed))
+                    draw_municipal_civic(night, sx, sy, role,
+                                         random.Random(civic_seed), night=True)
+                ring = rings[self._ring_of(self._priority.get((col, row), 1.0))]
+                ring.fill((*LIGHT_WARM, 170), (sx + TW // 2, sy + TH // 2, 2, 1))
+                continue
+            if kind == "vroad":
+                vt.slab(day, sx, sy, (62, 64, 70))
+                vt.slab(night, sx, sy, (34, 36, 42))
+                # Sparse baked-asphalt texture on top of the flat slab: the
+                # slab alone already guarantees a fully connected street grid,
+                # so these patches only need to read as "textured pavement,"
+                # not tile edge-to-edge (crossing at every intersection,
+                # straight texture every other tile along a run).
+                cross = (col % vc.BLOCK == 0) and (row % vc.BLOCK == 0)
+                rname = None
+                if cross:
+                    rname = "road_crossing"
+                elif col % vc.BLOCK == 0 and row % 2 == 0:
+                    rname = "road_straight_a"
+                elif row % vc.BLOCK == 0 and col % 2 == 0:
+                    rname = "road_straight_b"
+                if rname and va.has_terrain("downtown", rname):
+                    rspr = _downtown_road_sprite(rname)
+                    rpos = (sx + TW // 2 - rspr.get_width() // 2,
+                            sy + TH // 2 - rspr.get_height() // 2)
+                    day.blit(rspr, rpos)
+                    rnd = rspr.copy()
+                    rnd.fill(NIGHT_MULT + (255,), None, pygame.BLEND_RGB_MULT)
+                    night.blit(rnd, rpos)
+                continue
+            if kind == "voxel_bldg":
+                vt.slab(day, sx, sy, pal["pad"])
+                vt.slab(night, sx, sy, shade(pal["pad"], 0.30))
+                spr = _voxel_building_sprite(extra, (col * 2 + row) & 3)
+                pos = (sx + TW // 2 - spr.get_width() // 2, sy + TH - spr.get_height() + 2)
+                day.blit(spr, pos)
+                nd = spr.copy()
+                nd.fill(NIGHT_MULT + (255,), None, pygame.BLEND_RGB_MULT)
+                night.blit(nd, pos)
+                ring = rings[self._ring_of(self._priority.get((col, row), 1.0))]
+                ring.fill((*LIGHT_WARM, 180), (sx + TW // 2, sy + TH // 2, 2, 1))
+                continue
+            if kind == "campus":
+                campus = urban.campuses.get(extra) if urban is not None else None
+                radius = campus.radius if campus is not None else 2
+                draw_utility_campus_base(day, sx, sy, radius)
+                draw_utility_campus_base(night, sx, sy, radius, night=True)
                 continue
             if kind == "road":
-                c = ROAD_ARTERIAL if extra else ROAD_LOCAL
+                avenue = _road_is_avenue(extra)
+                c = ROAD_ARTERIAL if avenue else ROAD_LOCAL
                 pygame.draw.polygon(day, c, d)
                 pygame.draw.polygon(night, shade(c, 0.17), d)
                 # Sparse lane paint gives the enlarged master tiles scale and
                 # direction without turning every local street into striping.
-                if extra and (col + row) % 3 == 0:
+                if avenue and (col + row) % 3 == 0:
                     center = (sx + TW // 2, sy + TH // 2)
                     if col % ARTERIAL_SPACING == 0:
                         ends = ((center[0] + 3, center[1] - 1),
@@ -1868,29 +2459,62 @@ class IsoCity:
                             pygame.draw.line(detail_day["inspection"], (220, 224, 216),
                                              (center[0] - 3 + off, center[1] - 2),
                                              (center[0] - 1 + off, center[1] + 2))
-                if extra:      # arterials carry street lighting
+                if avenue:      # arterials carry street lighting
                     ring = rings[self._ring_of(self._priority.get((col, row), 1.0))]
                     ring.fill((*LIGHT_WARM, 210), (sx + TW // 2, sy + TH // 2, 2, 1))
                 continue
 
+            # Real-world-flavoured biome base tint: countryside away from the
+            # city reads as forest / desert / plains rather than one uniform
+            # green, blended with the season palette rather than overriding it
+            # (winter snow cover still whites the whole map out).
+            region = vt.region_of(col, row, 0.0, 0.0, weights=biome_weights)
+            tint = REGION_TINT.get(region) if season != "winter" else None
             if kind == "farm":
-                # one crop per parcel, so fields read as cultivated blocks
-                fk = (col // FIELD_SIZE, row // FIELD_SIZE)
-                c = FIELDS[(hash(fk) >> 3) % len(FIELDS)]
+                base = pal["field"]
+            elif tint:
+                base = tuple((t + g) // 2 for t, g in zip(tint, pal["grass"]))
             else:
-                c = srng.choice(PARK if kind == "park" else GRASS)
-            pygame.draw.polygon(day, c, d)
-            pygame.draw.polygon(night, shade(c, 0.22), d)
+                base = pal["grass"]
+            jit = 0.9 + 0.2 * srng.random()
+            # earth-toned block sides so grass/field turf reads as sitting on a
+            # chunky soil voxel (winter tints the "soil" toward frozen grey).
+            if season == "winter":
+                day_side, night_side = (150, 150, 158), (86, 88, 96)
+            else:
+                day_side, night_side = (120, 92, 58), (72, 54, 36)
+            vt.slab(day, sx, sy, base, jit=jit, side=day_side)
+            vt.slab(night, sx, sy, shade(base, 0.22), jit=jit, side=night_side)
 
             if kind in ("tree", "park") and (kind == "tree" or srng.random() < 0.55):
-                spr, _ = tree(srng)
-                self._blit_pair(day, night, spr, sx, sy)
+                props = vt.DECOR_PROPS.get(region) if season != "winter" else None
+                if props and all(va.has_terrain(region, p) for p in props):
+                    pname = props[abs(hash((col, row, "prop"))) % len(props)]
+                    pspr = _terrain_prop_sprite(region, pname)
+                    ppos = (sx + TW // 2 - pspr.get_width() // 2,
+                            sy + TH - pspr.get_height() + 2)
+                    day.blit(pspr, ppos)
+                    pnd = pspr.copy()
+                    pnd.fill(NIGHT_MULT + (255,), None, pygame.BLEND_RGB_MULT)
+                    night.blit(pnd, ppos)
+                else:
+                    spr, _ = tree(srng)
+                    self._blit_pair(day, night, spr, sx, sy)
                 continue
             if kind != "bldg":
                 continue
 
             spr, lights = BUILDERS[extra](srng)
             self._blit_pair(day, night, spr, sx, sy)
+            center_entry = next((entry for c, r, entry in self._city_centers
+                                 if c == col and r == row), None)
+            if center_entry is not None:
+                center_sprite = assets.iso_sprite(center_entry["file"])
+                base = center_entry.get(
+                    "base",
+                    [center_sprite.get_width() // 2, center_sprite.get_height() - 2],
+                )
+                self._blit_manifest_sprite_pair(day, night, center_sprite, base, sx, sy)
             roof_y = sy + TH - spr.get_height()
             pygame.draw.line(detail_day["gameplay"], (188, 194, 192),
                              (sx + 4, roof_y + 2), (sx + 11, roof_y + 2))
@@ -1907,25 +2531,77 @@ class IsoCity:
 
         # Transmission, baked BEFORE the plants so conductors pass behind the
         # switchyards they leave from rather than over the top of them.
+        #
+        # `conductor_paths[(key, i)][arm]` collects the SAME elevated, offset
+        # tower-by-tower point sequence used to draw each conductor (arm=-6 or
+        # +6, at crossarm height y-16) — this is what fixes electrons actually
+        # riding the drawn wire instead of a separate, silently mismatched
+        # ground-level route. Previously the electron Flow was built from the
+        # raw `path` (ground level, no offset) while the art used this
+        # elevated/offset geometry independently; they had never been the
+        # same points.
         self._route_transmission(ox, oy)
         grid = pygame.Surface((w, h), pygame.SRCALPHA)
         for i in self._subs_used:
             _substation(grid, *self._sub_screen[i])
-        for _key, _i, path in self._routes:
-            first = True
+        conductor_paths = {}
+        transmission3d = []
+        for key, i, path in self._routes:
+            arm_paths = {-6: [], 6: []}
+            route_towers = []
             for (x0, y0), (x1, y1) in zip(path, path[1:]):
                 span = math.hypot(x1 - x0, y1 - y0)
                 n = max(1, int(span / 46.0))
                 towers = [(x0 + (x1 - x0) * k / n, y0 + (y1 - y0) * k / n)
                           for k in range(n + 1)]
+                # double-circuit conductors off the upper crossarm tips (+/-6)
                 for a, b in zip(towers, towers[1:]):
-                    _span(grid, (a[0], a[1] - 11), (b[0], b[1] - 11))
-                for tx, ty in towers[1 if first else 0:]:
-                    _pylon(grid, int(tx), int(ty))
-                first = False
-        day.blit(grid, (0, 0))
-        grid.fill(NIGHT_MULT + (255,), None, pygame.BLEND_RGB_MULT)
-        night.blit(grid, (0, 0))
+                    for arm in (-6, 6):
+                        _span(grid, (a[0] + arm, a[1] - 16), (b[0] + arm, b[1] - 16))
+                for tx, ty in towers:
+                    if not route_towers or route_towers[-1] != (tx, ty):
+                        route_towers.append((tx, ty))
+                for arm in (-6, 6):
+                    for tx, ty in towers:
+                        pt = (tx + arm, ty - 16)
+                        if not arm_paths[arm] or arm_paths[arm][-1] != pt:
+                            arm_paths[arm].append(pt)
+            # Sparse, bold towers spaced by cumulative distance along the WHOLE
+            # corridor (not per-segment), so the conductor lines carry it and the
+            # towers are occasional punctuation -- never a lattice wall.
+            acc = 1e9
+            first_tower = True
+            pylon_points = []
+            for j, (tx, ty) in enumerate(route_towers):
+                if j > 0:
+                    acc += math.hypot(tx - route_towers[j - 1][0], ty - route_towers[j - 1][1])
+                if acc >= 150 or j == len(route_towers) - 1 or first_tower:
+                    # a BOLD tower at the plant end (start), then sparse towers
+                    _pylon(grid, int(tx), int(ty), h=30 if first_tower else 22)
+                    pylon_points.append((tx, ty))
+                    first_tower = False
+                    acc = 0.0
+            conductor_paths[(key, i)] = arm_paths
+            transmission3d.append({
+                "key": key,
+                "substation_index": i,
+                "tower_points": tuple((float(x), float(y)) for x, y in pylon_points),
+                "conductor_paths": {
+                    arm: tuple((float(x), float(y)) for x, y in pts)
+                    for arm, pts in arm_paths.items()
+                },
+            })
+        self._transmission3d = tuple(transmission3d)
+        # small flat junction markers at every connection point, drawn last so
+        # they sit on top of the conductors and substation kit
+        for i in self._subs_used:
+            _node(grid, int(self._sub_screen[i][0]), int(self._sub_screen[i][1]), r=4)
+        for _key, _i, path in self._routes:
+            _node(grid, int(path[0][0]), int(path[0][1]))
+        # Transmission is not folded into the city bases — it composites flat
+        # over the city in draw(), which is a compositing-order convenience,
+        # not a brightness effect: no glow, no dimming scrim.
+        self._transmission = grid
 
         # plant structures, drawn last so their stacks stand over the skyline
         self._arc_points = [self._sub_screen[i] for i in self._subs_used]
@@ -1941,17 +2617,39 @@ class IsoCity:
             ax, ay = site.switchyard_anchor()
             self._arc_points.append((ax + ox, ay + oy))
 
-        # One live flow per transmission route, then a visible distribution
-        # graph from substations through neighbourhood transformers to blocks.
-        self._flows = {(k, i): Flow(path, seed=abs(hash((k, i))) & 0xFFFF)
-                       for k, i, path in self._routes}
+        # Two electron Flows per corridor -- one per physical conductor,
+        # built from the exact elevated/offset points the wire was drawn
+        # with (conductor_paths, above) -- so pulses ride the real wire and
+        # arrive exactly at the substation. Speed comes from that plant's
+        # real ramp-up latency (see ramp_speed_px_s); rate still comes from
+        # output, inside Flow.update_and_draw.
+        self._flows = {}
+        for key, i, path in self._routes:
+            if key in NON_RAMP_SPEED_KEYS:
+                speed = NON_RAMP_SPEED_PX_S
+            else:
+                speed = ramp_speed_px_s(ramp_by_key.get(key, RAMP_LATENCY_MAX_S))
+            arm_paths = conductor_paths[(key, i)]
+            self._flows[(key, i)] = [
+                Flow(arm_paths[arm], speed_px_s=speed,
+                    seed=abs(hash((key, i, arm))) & 0xFFFF)
+                for arm in (-6, 6)
+            ]
         self._build_distribution(ox, oy)
-        for _index, flow in self._distribution_flows:
-            for a, b, _length in flow.segs:
-                pygame.draw.line(detail_day["gameplay"], (82, 88, 92), a, b, 1)
-        for _index, flow in self._service_flows:
-            for a, b, _length in flow.segs:
-                pygame.draw.line(detail_day["inspection"], (104, 110, 112), a, b, 1)
+        # Distribution feeders read WARM (amber) and low-poled, clearly distinct
+        # from the cool grey transmission corridors carrying electrons to the yard.
+        DIST_AMBER = (232, 168, 78)
+        for _index, pulse in self._distribution_pulses:
+            for a, b, _length in pulse.segs:
+                pygame.draw.line(detail_day["gameplay"], DIST_AMBER, a, b, 2)
+                _pole(detail_day["gameplay"], int(a[0]), int(a[1]))
+            if pulse.segs:
+                last = pulse.segs[-1][1]
+                _pole(detail_day["gameplay"], int(last[0]), int(last[1]))
+        for _index, pulse in self._service_pulses:
+            for a, b, _length in pulse.segs:
+                pygame.draw.line(detail_day["inspection"], shade(CONDUCTOR, 1.1), a, b, 1)
+                _pole(detail_day["inspection"], int(a[0]), int(a[1]), h=4)
         for transformer in self._transformers:
             _transformer(detail_day["gameplay"], *transformer.point)
             _transformer(detail_day["inspection"], *transformer.point, detailed=True)
@@ -1982,6 +2680,14 @@ class IsoCity:
         dark = spr.copy()
         dark.fill(NIGHT_MULT + (255,), None, pygame.BLEND_RGB_MULT)
         night.blit(dark, pos)
+
+    def _blit_manifest_sprite_pair(self, day, night, sprite, base, sx, sy):
+        pos = (sx - int(base[0]), sy + TH - int(base[1]))
+        day.blit(sprite, pos)
+        dark = sprite.copy()
+        dark.fill(NIGHT_MULT + (255,), None, pygame.BLEND_RGB_MULT)
+        night.blit(dark, pos)
+        return pos
 
     # -- drawing -----------------------------------------------------------
     def zoom_at(self, direction, pos, rect):
@@ -2057,15 +2763,57 @@ class IsoCity:
         dest = camera.world_to_screen(visible.topleft, rect)
         surface.blit(scaled, (round(dest[0]), round(dest[1])))
 
+    @property
+    def tiles(self):
+        """Read-only view of the current tile layout: {(col, row): (kind, extra)}."""
+        return self._tiles
+
+    @property
+    def layout_key(self):
+        """Opaque key that changes exactly when _layout() has re-run (rect
+        size, population bucket, fleet). Consumers that cache derived state
+        from `tiles` (e.g. terrain3d's instance buffers) should key their
+        cache on this."""
+        return self._key
+
+    @property
+    def plants(self):
+        """Read-only view of the current plant placements: list[PlantSite]."""
+        return self._plants
+
+    @property
+    def transmission3d(self):
+        """Read-only 3D transmission geometry snapshot built during bake."""
+        return self._transmission3d
+
     def prepare(self, rect, state):
-        """Ensure camera, world layers, and plant markers exist for this frame."""
+        """Ensure camera, world layers, and plant markers exist for this frame.
+
+        The persistent RoadNetwork survives across bakes (created once, only
+        grows); a bake is still needed whenever population/fleet/viewport
+        changes, since the RASTER layers (day/night surfaces) are baked
+        images, not something updated incrementally -- only the underlying
+        road/building DATA is incremental. `_layout` (called from `_bake`)
+        is what actually decides whether to bootstrap fresh or grow the
+        existing network.
+        """
         population = state_population(state)
         fleet = tuple(sorted(s.key for s in state.sources if s.max_output_mw > 0))
         world_size = required_world_size(rect)
-        key = (world_size, round(population / 5000.0), fleet)
+        # Season drives the ground palette; a season boundary forces exactly one
+        # re-bake by participating in the bake key. _bake reads _pending_season.
+        pending_season = vt.season_of(getattr(getattr(state, "date", None), "month", 8))
+        self._pending_season = pending_season
+        # Real-world grid region (EIA balancing-authority code from scenarios.py,
+        # e.g. "PJM"/"ISNE"/"ERCO"; None for the national-average Standard grid)
+        # biases countryside biome selection -- same key/re-bake mechanism as season.
+        pending_region = getattr(getattr(state, "config", None), "region_code", None)
+        self._pending_region = pending_region
+        key = (world_size, round(population / 5000.0), fleet, pending_season, pending_region)
         if key != self._key:
             self._key = key
-            self._bake(rect, population, fleet)
+            ramp_by_key = {s.key: s.ramp_up_latency for s in state.sources}
+            self._bake(rect, population, fleet, ramp_by_key)
 
     def draw(self, surface, rect, state, atmosphere=None):
         dt = 1.0 / 60.0
@@ -2098,12 +2846,17 @@ class IsoCity:
         self._wash.fill((*atmosphere.world_tint, wash_alpha))
         world.blit(self._wash, (0, 0))
 
+        self._draw_vehicles(world, traffic_level(state.sim_hour, served), day, dt)
         self._draw_lights(world, self._world_rect, activity, served, day)
 
+        # Transmission composites flat over the city — accurate shape and
+        # scale carry the teaching, not glow or a dimming scrim.
+        world.blit(self._transmission, (0, 0))
+
+        # per-frame grid animation + plant/overload effects ride on top
         layer = self._overlay
         layer.fill((0, 0, 0, 0))
-        self._draw_vehicles(layer, traffic_level(state.sim_hour, served), day, dt)
-        self._draw_transmission(layer, state, dt)
+        self._draw_power_flow(layer, state, dt)
         self._draw_plants(layer, state, day)
         self._update_fires(dt, fire)
         if voltage > 0.0 or fire > 0.0 or self._fires or self._arcs:
@@ -2167,6 +2920,7 @@ class IsoCity:
         return False
 
     def _draw_vehicles(self, layer, level, day, dt):
+        return   # cars removed by design -- the city reads its power via lighting
         n = int(len(self._vehicles) * level * vehicle_density_for_zoom(self.camera.zoom))
         ox, oy = self._origin
         night = day < 0.35
@@ -2185,37 +2939,46 @@ class IsoCity:
             spr = _vehicle_sprite(veh.kind, veh.color, orient, night)
             layer.blit(spr, (sx + ox + TW // 2 - ax, sy + oy + TH // 2 - ay))
 
-    def _draw_transmission(self, layer, state, dt):
-        """Blue pulses out along each plant's line, then on into the streets.
+    def _draw_power_flow(self, layer, state, dt):
+        """Per-frame animation for the whole delivery chain.
 
-        Rate follows `actual_pct` — the ramped output, not what the player just
-        asked for — so a plant that has been throttled back keeps its line lit
-        until it has actually wound down, which is the lag the whole game is
-        about. A plant at zero leaves a dark but still-drawn line: a dead
-        circuit is still a circuit.
+        Transmission: individual electron pulses, one Flow per conductor per
+        corridor, riding the real elevated/offset conductor geometry and
+        arriving exactly at the substation. Rate follows `actual_pct` — the
+        ramped output, not what the player just asked for — so a plant that
+        has been throttled back keeps its line lit until it has actually
+        wound down. A plant at zero leaves a dark but still-drawn line: a
+        dead circuit is still a circuit. Speed is fixed per Flow at bake
+        time from the plant's real ramp-up latency (see ramp_speed_px_s).
+
+        Distribution and service lines: no discrete particles — a travelling
+        LinePulse wave, present only while that branch is actually
+        energised (same served/priority gate the window-lighting ring model
+        uses), so a dead feeder just stays dark and static.
         """
         by_key = {s.key: s for s in state.sources}
-        load = {}
-        for (key, i), flow in self._flows.items():
+        for (key, i), flows in self._flows.items():
             src = by_key.get(key)
             out = 0.0 if src is None or src.max_output_mw <= 0 else src.actual_pct
-            flow.update_and_draw(layer, out, dt)
-            got, cap = load.get(i, (0.0, 0.0))
-            mw = src.max_output_mw if src else 0.0
-            load[i] = (got + out * mw, cap + mw)
-        if self.camera.zoom < 2:
-            return
+            color = src.color if src is not None else (120, 200, 255)
+            if key in ("solar", "gas", "peaker"):
+                color = tuple(int(c * 0.72 + 78 * 0.28) for c in color[:3])
+            frac = state.line_overload_frac.get(key, 0.0)
+            for flow in flows:
+                flow.update_and_draw(layer, out, dt, color=color, overload=frac)
+
         served = served_fraction(state.fill_pct_display)
-        branch_levels = {}
-        for index, flow in self._distribution_flows:
-            transformer = self._transformers[index]
-            got, cap = load.get(transformer.sub_index, (0.0, 0.0))
-            upstream = got / cap if cap > 0 else 0.0
-            level = distribution_level(transformer.priority, served, upstream)
-            branch_levels[index] = level
-            flow.update_and_draw(layer, level, dt)
-        for index, flow in self._service_flows:
-            flow.update_and_draw(layer, branch_levels.get(index, 0.0), dt)
+        levels = detail_levels_for_zoom(self.camera.zoom)
+        if "gameplay" in levels:
+            for index, pulse in self._distribution_pulses:
+                # intensity = how much power is actually flowing to this feeder
+                # (0 when its circuit is shed); pulses speed up + brighten with it.
+                intensity = served if self._transformers[index].priority < served else 0.0
+                pulse.draw(layer, self.t, intensity, color=(255, 190, 92))
+        if "inspection" in levels:
+            for index, pulse in self._service_pulses:
+                energised = self._transformers[index].priority < served
+                pulse.draw(layer, self.t, energised)
 
     def _draw_plants(self, layer, state, day):
         by_key = {s.key: s for s in state.sources}
@@ -2268,18 +3031,26 @@ class IsoCity:
     def _draw_overload(self, layer, rect, voltage, fire):
         """Oversupply: the grid cooking itself.
 
-        The full-rect wash keeps its ~0.25 Hz envelope at EVERY severity —
-        severity raises its peak alpha and nothing else. Speeding a large-area
-        pulse up with severity is the intuitive move and it is exactly the
-        photosensitive-seizure trigger this file refuses to ship. Above 40%,
-        local arcs may flicker faster because they are only a few pixels each.
+        The warning is restricted to the world edges. The center of the playfield
+        stays clear so the city, plant controls, and transmission teaching remain
+        readable while the edge still signals danger.
         """
         pulse = 0.5 + 0.5 * math.sin(self.t * 1.6)
-        a = int(46 * voltage * (0.55 + 0.45 * pulse))
+        a = int(30 * voltage * (0.55 + 0.45 * pulse))
         if a > 3:
-            wash = pygame.Surface(rect.size, pygame.SRCALPHA)
-            wash.fill((*LIGHT_OVERLOAD, a))
-            layer.blit(wash, (0, 0))
+            thickness = int(12 + 24 * voltage)
+            edge = pygame.Surface(rect.size, pygame.SRCALPHA)
+            for i in range(thickness):
+                k = 1.0 - i / max(1, thickness)
+                alpha = int(a * k * k)
+                if alpha <= 0:
+                    continue
+                pygame.draw.rect(edge, (*LIGHT_OVERLOAD, alpha),
+                                 pygame.Rect(i, i,
+                                             rect.width - i * 2,
+                                             rect.height - i * 2),
+                                 width=1)
+            layer.blit(edge, (0, 0))
 
         for f in self._fires if fire > 0.0 else ():
             k = f.age / f.life
